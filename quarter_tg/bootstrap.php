@@ -1,58 +1,69 @@
 <?php
+
+// ============================================================
+// بوت‌استرپ ربات Quarter TG
+// ============================================================
+
+// تنظیمات مسیرها
+define('ROOT_DIR', __DIR__);
+define('SRC_DIR', ROOT_DIR . '/src');
+define('CONFIG_DIR', ROOT_DIR . '/config');
+define('LOGS_DIR', ROOT_DIR . '/logs');
+define('CACHE_DIR', ROOT_DIR . '/cache');
+
+// بارگذاری تنظیمات
+$config = require CONFIG_DIR . '/config.php';
+
+// کلاس‌های اتولود (ساده)
 spl_autoload_register(function ($class) {
-    $prefixes = [
-        'Core\\' => __DIR__ . '/src/Core/',
-        'Helpers\\' => __DIR__ . '/src/Helpers/',
-        'Modules\\' => __DIR__ . '/src/Modules/',
-        'Exceptions\\' => __DIR__ . '/src/Exceptions/',
-    ];
-    foreach ($prefixes as $prefix => $dir) {
-        if (strpos($class, $prefix) === 0) {
-            $file = $dir . str_replace('\\', '/', substr($class, strlen($prefix))) . '.php';
-            if (file_exists($file)) {
-                require_once $file;
-            }
-            return;
-        }
+    $prefix = 'Core\\';
+    $base_dir = SRC_DIR . '/Core/';
+    if (strpos($class, $prefix) === 0) {
+        $relative_class = substr($class, strlen($prefix));
+        $file = $base_dir . str_replace('\\', '/', $relative_class) . '.php';
+        if (file_exists($file)) require $file;
+        return;
+    }
+    $prefix = 'Modules\\';
+    $base_dir = SRC_DIR . '/Modules/';
+    if (strpos($class, $prefix) === 0) {
+        $relative_class = substr($class, strlen($prefix));
+        $file = $base_dir . str_replace('\\', '/', $relative_class) . '.php';
+        if (file_exists($file)) require $file;
+        return;
+    }
+    $prefix = 'Helpers\\';
+    $base_dir = SRC_DIR . '/Helpers/';
+    if (strpos($class, $prefix) === 0) {
+        $relative_class = substr($class, strlen($prefix));
+        $file = $base_dir . str_replace('\\', '/', $relative_class) . '.php';
+        if (file_exists($file)) require $file;
+        return;
     }
 });
 
-$config = require_once __DIR__ . '/config/config.php';
+// ایجاد وابستگی‌ها
+$db = new Core\Database($config['db']);
+$telegram = new Helpers\TelegramApi($config['bot_token']);
+$logger = new Core\Logger(LOGS_DIR . '/bot.log');
 
-$logger = new \Core\Logger($config['log_dir'], $config['log_level'], $config['enable_log']);
-$cache = new \Core\Cache($config['cache_dir'], $config['cache_ttl']);
-$db = \Core\Database::getInstance($config['db']);
-$api = new \Helpers\TelegramApi($config['bot_token']);
-$permissionManager = new \Core\PermissionManager($db, $cache);
-$adminManager = new \Core\AdminManager($db, $cache);
-$welcomeManager = new \Core\WelcomeManager($db, $cache);
-$lockManager = new \Core\LockManager($db, $cache);
-$messageLogger = new \Core\MessageLogger($db, $cache, true);
-$commandLogger = new \Core\CommandLogger($db, $cache, true);  // NEW
+// مدیران
+$muteManager = new Core\MuteManager($db, $telegram, $logger);
+$moduleManager = new Core\ModuleManager($config['command_map']);
 
-$auth = new \Core\AuthorizationManager($db, $api, $cache, $permissionManager, $adminManager);
-$requestHandler = new \Core\RequestHandler($config['command_map']);
-$moduleManager = new \Core\ModuleManager(
-    $config['modules_dir'],
-    $config['command_map'],
-    $config['module_defaults'] ?? []
-);
+// ثبت ماژول‌های سفارشی (اختیاری)
+// ماژول‌های جدید در command_map ثبت شده‌اند، نیازی به ثبت جداگانه نیست
+// اما اگر می‌خواهید وابستگی‌های خاصی تزریق کنید، می‌توانید از setter استفاده کنید
 
-$GLOBALS['adminManager'] = $adminManager;
-$GLOBALS['welcomeManager'] = $welcomeManager;
-$GLOBALS['lockManager'] = $lockManager;
-$GLOBALS['db'] = $db;
-$GLOBALS['cache'] = $cache;
+// ساخت ربات
+$bot = new Core\Bot($db, $telegram, $logger, $moduleManager, $muteManager, $config);
 
-$bot = new \Core\Bot(
-    $api,
-    $auth,
-    $moduleManager,
-    $requestHandler,
-    $logger,
-    $config,
-    $welcomeManager,
-    $lockManager,
-    $messageLogger,
-    $commandLogger
-);
+// پردازش درخواست دریافتی
+$update = json_decode(file_get_contents('php://input'), true);
+if ($update) {
+    $bot->handleRequest($update);
+} else {
+    // اگر درخواست خالی بود، می‌توانید پیام خطا بدهید (برای دیباگ)
+    http_response_code(400);
+    echo 'Invalid request';
+}
