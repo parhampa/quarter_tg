@@ -9,15 +9,24 @@ class Bot
     private $logger;
     private $moduleManager;
     private $muteManager;
+    private $warningManager;
     private $config;
 
-    public function __construct($db, $telegram, $logger, $moduleManager, $muteManager, $config)
-    {
+    public function __construct(
+        $db,
+        $telegram,
+        $logger,
+        $moduleManager,
+        $muteManager,
+        $warningManager,
+        $config
+    ) {
         $this->db = $db;
         $this->telegram = $telegram;
         $this->logger = $logger;
         $this->moduleManager = $moduleManager;
         $this->muteManager = $muteManager;
+        $this->warningManager = $warningManager;
         $this->config = $config;
     }
 
@@ -35,12 +44,9 @@ class Bot
             $user_id = $message['from']['id'];
 
             // ========== بررسی سکوت ==========
-            // اگر کاربر در این گروه ساکت باشد، پیام را حذف می‌کنیم و ادامه نمی‌دهیم
             if ($this->muteManager->isMuted($chat_id, $user_id)) {
                 // حذف پیام
                 $this->telegram->deleteMessage($chat_id, $message['message_id']);
-                // (اختیاری) ارسال اعلان خصوصی به کاربر
-                // $this->telegram->sendMessage($user_id, "شما در این گروه ساکت هستید و نمی‌توانید پیام ارسال کنید.");
                 return; // توقف پردازش
             }
 
@@ -53,15 +59,14 @@ class Bot
                     // بررسی اینکه آیا دستور در command_map وجود دارد
                     $moduleClass = $this->moduleManager->getModuleForCommand($command);
                     if ($moduleClass) {
-                        // اجرای ماژول
-                        $module = new $moduleClass(
-                            $this->muteManager,
-                            $this->telegram,
-                            $this->db,
-                            $this->logger
-                        );
-                        $module->execute($message, $params);
-                        return;
+                        // دریافت نمونه ماژول از ModuleManager
+                        $module = $this->moduleManager->getModuleInstance($moduleClass);
+                        if ($module) {
+                            $module->execute($message, $params);
+                            // لاگ دستورات ادمین (اختیاری)
+                            $this->logCommand($chat_id, $user_id, $command, $params);
+                            return;
+                        }
                     }
                 }
             }
@@ -103,8 +108,6 @@ class Bot
         $after = trim(substr($text, strlen($command)));
         if ($after) {
             $params['raw'] = $after;
-            // می‌توانید پارامترها را تجزیه کنید
-            // برای سادگی، تمام متن بعد از دستور را به عنوان reason در نظر می‌گیریم
             $params['reason'] = $after;
         }
         return $params;
@@ -126,6 +129,9 @@ class Bot
         $stmt->execute();
     }
 
+    /**
+     * تشخیص نوع پیام
+     */
     private function detectMessageType($message)
     {
         if (isset($message['text'])) return 'text';
@@ -137,5 +143,16 @@ class Bot
         if (isset($message['video_note'])) return 'video_note';
         if (isset($message['animation'])) return 'animation';
         return 'unknown';
+    }
+
+    /**
+     * لاگ دستورات ادمین (اختیاری)
+     */
+    private function logCommand($group_id, $admin_id, $command, $params)
+    {
+        $target = $params['raw'] ?? '';
+        $stmt = $this->db->prepare("INSERT INTO bot_command_logs (admin_id, group_id, command, target, executed_at) VALUES (?, ?, ?, ?, NOW())");
+        $stmt->bind_param("iiss", $admin_id, $group_id, $command, $target);
+        $stmt->execute();
     }
 }

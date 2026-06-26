@@ -1,90 +1,125 @@
 <?php
-namespace Modules;
 
-use Helpers\TelegramApi;
-use Helpers\LanguageHelper;
+namespace Modules;
 
 class HelpModule
 {
-    public function handle(array $update, array $args, TelegramApi $api, string $command): void
-    {
-        $chatId = $update['message']['chat']['id'];
-        $msgId = $update['message']['message_id'];
-        $lang = LanguageHelper::getLanguageFromCommand($command);
+    private $telegram;
+    private $db;
+    private $logger;
 
-        if ($lang === 'fa') {
-            $helpText = "📚 دستورات موجود:\n\n";
-            $helpText .= "🔹 مدیریت ادمین‌ها:\n";
-            $helpText .= "   • ست ادمین @user - اضافه کردن ادمین\n";
-            $helpText .= "   • حذف ادمین @user - حذف ادمین\n";
-            $helpText .= "   • لیست ادمین‌ها - نمایش لیست ادمین‌ها\n\n";
-            $helpText .= "🔹 پیام خوش‌آمدگویی:\n";
-            $helpText .= "   • خوش آمد بگو - فعال کردن خوش‌آمدگویی\n";
-            $helpText .= "   • حذف خوش آمدگویی - غیرفعال کردن خوش‌آمدگویی\n\n";
-            $helpText .= "🔹 پین کردن پیام:\n";
-            $helpText .= "   • پین - (با ریپلای) پین کردن پیام\n";
-            $helpText .= "   • حذف پین - (با ریپلای) خارج کردن از پین\n\n";
-            $helpText .= "🔹 اطلاعات کاربر:\n";
-            $helpText .= "   • آیدی - (با ریپلای) نمایش آیدی کاربر\n\n";
-            $helpText .= "🔹 حذف پیام:\n";
-            $helpText .= "   • حذف - (با ریپلای) حذف یک پیام\n";
-            $helpText .= "   • پاکسازی - (محدودیت ۲۴ ساعته) حذف ۵۰۰۰ پیام آخر\n\n";
-            $helpText .= "🔹 مدیریت کاربران:\n";
-            $helpText .= "   • بن - (با ریپلای یا ذکر) بن کردن کاربر\n";
-            $helpText .= "   • حذف بن - (با ریپلای یا ذکر) خارج کردن از بن\n";
-            $helpText .= "   • لیست بن‌ها - نمایش لیست کاربران بن‌شده\n\n";
-            $helpText .= "🔹 قفل‌های گروه:\n";
-            $helpText .= "   • قفل پیام - جلوگیری از ارسال پیام متنی\n";
-            $helpText .= "   • حذف قفل پیام - لغو قفل\n";
-            $helpText .= "   • قفل استیکر - جلوگیری از ارسال استیکر\n";
-            $helpText .= "   • حذف قفل استیکر - لغو قفل\n";
-            $helpText .= "   • قفل عکس - جلوگیری از ارسال عکس\n";
-            $helpText .= "   • حذف قفل عکس - لغو قفل\n";
-            $helpText .= "   • قفل فیلم - جلوگیری از ارسال فیلم\n";
-            $helpText .= "   • حذف قفل فیلم - لغو قفل\n";
-            $helpText .= "   • قفل گیف - جلوگیری از ارسال گیف\n";
-            $helpText .= "   • حذف قفل گیف - لغو قفل\n";
-            $helpText .= "   • قفل ویس - جلوگیری از ارسال ویس\n";
-            $helpText .= "   • حذف قفل ویس - لغو قفل\n";
-            $helpText .= "   • قفل ویدئو مسیج - جلوگیری از ارسال ویدئو مسیج\n";
-            $helpText .= "   • حذف قفل ویدئو مسیج - لغو قفل";
-        } else {
-            $helpText = "📚 Available commands:\n\n";
-            $helpText .= "🔹 Admin management:\n";
-            $helpText .= "   • /addadmin @user - Add admin\n";
-            $helpText .= "   • /remadmin @user - Remove admin\n";
-            $helpText .= "   • /listadmin - List admins\n\n";
-            $helpText .= "🔹 Welcome message:\n";
-            $helpText .= "   • /sayhello - Enable welcome\n";
-            $helpText .= "   • /remsayhello - Disable welcome\n\n";
-            $helpText .= "🔹 Pin message:\n";
-            $helpText .= "   • /pin - (reply) Pin a message\n";
-            $helpText .= "   • /rempin - (reply) Unpin a message\n\n";
-            $helpText .= "🔹 User info:\n";
-            $helpText .= "   • /id - (reply) Show user ID\n\n";
-            $helpText .= "🔹 Delete messages:\n";
-            $helpText .= "   • /del - (reply) Delete a single message\n";
-            $helpText .= "   • /clear - (24h cooldown) Clear last 5000 messages\n\n";
-            $helpText .= "🔹 User management:\n";
-            $helpText .= "   • /ban - (reply or mention) Ban a user\n";
-            $helpText .= "   • /unban - (reply or mention) Unban a user\n";
-            $helpText .= "   • /listbans - Show list of banned users\n\n";
-            $helpText .= "🔹 Group locks:\n";
-            $helpText .= "   • /lockmsg - Prevent text messages\n";
-            $helpText .= "   • /dislockmsg - Remove lock\n";
-            $helpText .= "   • /locksticker - Prevent stickers\n";
-            $helpText .= "   • /dislocksticker - Remove lock\n";
-            $helpText .= "   • /lockpic - Prevent photos\n";
-            $helpText .= "   • /dislockpic - Remove lock\n";
-            $helpText .= "   • /lockfilm - Prevent videos\n";
-            $helpText .= "   • /dislockfilm - Remove lock\n";
-            $helpText .= "   • /lockgif - Prevent GIFs\n";
-            $helpText .= "   • /dislockgif - Remove lock\n";
-            $helpText .= "   • /lockvoice - Prevent voice messages\n";
-            $helpText .= "   • /remlockvoice - Remove lock\n";
-            $helpText .= "   • /lockvm - Prevent video messages\n";
-            $helpText .= "   • /remlockvm - Remove lock";
+    public function __construct($telegram, $db, $logger)
+    {
+        $this->telegram = $telegram;
+        $this->db = $db;
+        $this->logger = $logger;
+    }
+
+    public function execute($message, $params)
+    {
+        $chat_id = $message['chat']['id'];
+        $from_id = $message['from']['id'];
+
+        // فقط مدیران می‌توانند راهنما را ببینند
+        if (!$this->isGroupAdmin($chat_id, $from_id)) {
+            $this->telegram->sendMessage($chat_id, "⛔ شما اجازه دسترسی به راهنما را ندارید.\n⛔ You don't have permission to view help.");
+            return;
         }
-        $api->sendMessage($chatId, $helpText, $msgId);
+
+        $text = $message['text'] ?? '';
+        // تشخیص زبان: اگر دستور با /help شروع شود یا شامل help باشد => انگلیسی
+        $is_english = (stripos($text, '/help') === 0 || stripos($text, 'help') !== false);
+
+        if ($is_english) {
+            $help_text = $this->getEnglishHelp();
+        } else {
+            $help_text = $this->getPersianHelp();
+        }
+
+        $this->telegram->sendMessage($chat_id, $help_text);
+    }
+
+    private function getPersianHelp()
+    {
+        return "📋 **راهنمای ربات مدیریت گروه**\n\n"
+            . "🔹 **مدیریت ادمین‌ها**\n"
+            . "`ست ادمین` @username - افزودن ادمین جدید\n"
+            . "`حذف ادمین` @username - حذف ادمین\n"
+            . "`لیست ادمین‌ها` - نمایش لیست ادمین‌ها\n\n"
+            . "🔹 **مدیریت کاربران**\n"
+            . "`بن` @username - بن کردن کاربر\n"
+            . "`آن‌بن` @username - رفع بن کاربر\n"
+            . "`لیست بن‌ها` - نمایش لیست کاربران بن‌شده\n"
+            . "`سکوت` @username - ساکت کردن کاربر (فقط مدیران)\n"
+            . "`حذف سکوت` @username - برداشتن سکوت کاربر\n"
+            . "`اخطار` @username - ثبت اخطار (پس از ۳ اخطار بن خودکار)\n"
+            . "`حذف اخطار` @username - حذف تمام اخطارهای کاربر\n\n"
+            . "🔹 **مدیریت پیام‌ها**\n"
+            . "`پین` (ریپلای) - پین کردن پیام\n"
+            . "`حذف پین` - حذف پین\n"
+            . "`حذف` (ریپلای) - حذف یک پیام\n"
+            . "`پاکسازی` - پاکسازی ۵۰۰۰ پیام آخر\n"
+            . "`آیدی` - دریافت آیدی عددی کاربر\n\n"
+            . "🔹 **قفل‌های محتوا**\n"
+            . "`قفل پیام` / `رفع قفل پیام` - قفل/رفع قفل متن\n"
+            . "`قفل عکس` / `رفع قفل عکس` - قفل/رفع قفل عکس\n"
+            . "`قفل فیلم` / `رفع قفل فیلم` - قفل/رفع قفل ویدیو\n"
+            . "`قفل گیف` / `رفع قفل گیف` - قفل/رفع قفل GIF\n"
+            . "`قفل استیکر` / `رفع قفل استیکر` - قفل/رفع قفل استیکر\n"
+            . "`قفل ویس` / `رفع قفل ویس` - قفل/رفع قفل ویس\n"
+            . "`قفل ویدئو مسیج` / `رفع قفل ویدئو مسیج` - قفل/رفع قفل ویدئو مسیج\n\n"
+            . "🔹 **سایر**\n"
+            . "`خوش آمد بگو` / `خوش آمد نگو` - فعال/غیرفعال‌سازی پیام خوش‌آمدگویی\n"
+            . "`راهنما` / `help` - نمایش این راهنما";
+    }
+
+    private function getEnglishHelp()
+    {
+        return "📋 **Group Management Bot Help**\n\n"
+            . "🔹 **Admin Management**\n"
+            . "`/addadmin` @username - Add a new admin\n"
+            . "`/remadmin` @username - Remove an admin\n"
+            . "`/listadmin` - List all admins\n\n"
+            . "🔹 **User Management**\n"
+            . "`/ban` @username - Ban a user\n"
+            . "`/unban` @username - Unban a user\n"
+            . "`/listbans` - List banned users\n"
+            . "`/mute` @username - Mute a user (admins only)\n"
+            . "`/unmute` @username - Unmute a user\n"
+            . "`/warning` @username - Give a warning (auto-ban after 3)\n"
+            . "`/remwarning` @username - Remove all warnings for a user\n\n"
+            . "🔹 **Message Management**\n"
+            . "`/pin` (reply) - Pin a message\n"
+            . "`/rempin` - Unpin a message\n"
+            . "`/del` (reply) - Delete a message\n"
+            . "`/clear` - Clear last 5000 messages\n"
+            . "`/id` - Get user ID\n\n"
+            . "🔹 **Content Locks**\n"
+            . "`/lockmsg` / `/dislockmsg` - Lock/Unlock text messages\n"
+            . "`/lockpic` / `/dislockpic` - Lock/Unlock photos\n"
+            . "`/lockfilm` / `/dislockfilm` - Lock/Unlock videos\n"
+            . "`/lockgif` / `/dislockgif` - Lock/Unlock GIFs\n"
+            . "`/locksticker` / `/dislocksticker` - Lock/Unlock stickers\n"
+            . "`/lockvoice` / `/remlockvoice` - Lock/Unlock voice messages\n"
+            . "`/lockvm` / `/remlockvm` - Lock/Unlock video notes\n\n"
+            . "🔹 **Other**\n"
+            . "`/sayhello` / `/remsayhello` - Enable/Disable welcome message\n"
+            . "`/help` or `راهنما` - Show this help";
+    }
+
+    private function isGroupAdmin($group_id, $user_id)
+    {
+        $stmt = $this->db->prepare("SELECT id FROM bot_admins WHERE group_id = ? AND user_id = ?");
+        $stmt->bind_param("ii", $group_id, $user_id);
+        $stmt->execute();
+        $result = $stmt->get_result();
+        if ($result->num_rows > 0) {
+            return true;
+        }
+        $stmt = $this->db->prepare("SELECT id FROM bot_sub_admins WHERE group_id = ? AND user_id = ?");
+        $stmt->bind_param("ii", $group_id, $user_id);
+        $stmt->execute();
+        $result = $stmt->get_result();
+        return $result->num_rows > 0;
     }
 }

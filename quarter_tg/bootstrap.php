@@ -47,23 +47,44 @@ $db = new Core\Database($config['db']);
 $telegram = new Helpers\TelegramApi($config['bot_token']);
 $logger = new Core\Logger(LOGS_DIR . '/bot.log');
 
-// مدیران
+// ==================== مدیران جدید ====================
 $muteManager = new Core\MuteManager($db, $telegram, $logger);
+$warningManager = new Core\WarningManager($db, $telegram, $logger);
+
+// ==================== ModuleManager ====================
 $moduleManager = new Core\ModuleManager($config['command_map']);
 
-// ثبت ماژول‌های سفارشی (اختیاری)
-// ماژول‌های جدید در command_map ثبت شده‌اند، نیازی به ثبت جداگانه نیست
-// اما اگر می‌خواهید وابستگی‌های خاصی تزریق کنید، می‌توانید از setter استفاده کنید
+// ==================== ثبت ماژول‌ها با وابستگی‌ها ====================
+// ماژول‌های Help
+$moduleManager->registerModule('HelpModule', new Modules\HelpModule($telegram, $db, $logger));
 
-// ساخت ربات
-$bot = new Core\Bot($db, $telegram, $logger, $moduleManager, $muteManager, $config);
+// ماژول‌های Mute
+$moduleManager->registerModule('MuteModule', new Modules\MuteModule($muteManager, $telegram, $db, $logger));
+$moduleManager->registerModule('UnmuteModule', new Modules\UnmuteModule($muteManager, $telegram, $db, $logger));
 
-// پردازش درخواست دریافتی
+// ماژول‌های Warning
+$moduleManager->registerModule('WarningModule', new Modules\WarningModule($warningManager, $telegram, $db, $logger));
+$moduleManager->registerModule('RemoveWarningModule', new Modules\RemoveWarningModule($warningManager, $telegram, $db, $logger));
+
+// در صورت وجود سایر ماژول‌ها، می‌توانید آن‌ها را نیز ثبت کنید
+// اما اگر ماژول‌ها وابستگی خاصی ندارند، از command_map استفاده می‌شود
+
+// ==================== ساخت ربات ====================
+$bot = new Core\Bot(
+    $db,
+    $telegram,
+    $logger,
+    $moduleManager,
+    $muteManager,
+    $warningManager,
+    $config
+);
+
+// ==================== پردازش درخواست ====================
 $update = json_decode(file_get_contents('php://input'), true);
 if ($update) {
     $bot->handleRequest($update);
 } else {
-    // اگر درخواست خالی بود، می‌توانید پیام خطا بدهید (برای دیباگ)
     http_response_code(400);
     echo 'Invalid request';
 }
