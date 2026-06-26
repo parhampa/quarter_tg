@@ -346,8 +346,8 @@ Contributions are welcome! Please submit a pull request or open an issue for bug
 
 ## 📬 Contact
 
-- **GitHub**: [github.com/yourusername/quarter_tg](https://github.com/parhampa/quarter_tg)
-- **Telegram**: [@yourusername](https://t.me/parhamtrojan)
+- **GitHub**: [github.com/parhampa/quarter_tg](https://github.com/parhampa/quarter_tg)
+- **Telegram**: [@parhamtrojan](https://t.me/parhamtrojan)
 
 ---
 
