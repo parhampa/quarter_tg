@@ -1,273 +1,141 @@
 <?php
-namespace Core;
 
-use Helpers\TelegramApi;
-use Exceptions\ModuleNotFoundException;
+namespace Core;
 
 class Bot
 {
-    private $api;
-    private $auth;
-    private $moduleManager;
-    private $requestHandler;
+    private $db;
+    private $telegram;
     private $logger;
+    private $moduleManager;
+    private $muteManager;
     private $config;
-    private $welcomeManager;
-    private $lockManager;
-    private $messageLogger;
-    private $commandLogger;
 
-    public function __construct(
-        TelegramApi $api,
-        AuthorizationManager $auth,
-        ModuleManager $moduleManager,
-        RequestHandler $requestHandler,
-        Logger $logger,
-        array $config,
-        WelcomeManager $welcomeManager,
-        LockManager $lockManager,
-        MessageLogger $messageLogger,
-        CommandLogger $commandLogger
-    ) {
-        $this->api = $api;
-        $this->auth = $auth;
-        $this->moduleManager = $moduleManager;
-        $this->requestHandler = $requestHandler;
+    public function __construct($db, $telegram, $logger, $moduleManager, $muteManager, $config)
+    {
+        $this->db = $db;
+        $this->telegram = $telegram;
         $this->logger = $logger;
+        $this->moduleManager = $moduleManager;
+        $this->muteManager = $muteManager;
         $this->config = $config;
-        $this->welcomeManager = $welcomeManager;
-        $this->lockManager = $lockManager;
-        $this->messageLogger = $messageLogger;
-        $this->commandLogger = $commandLogger;
     }
 
-    public function handleRequest(string $input): void
+    /**
+     * نقطه ورود پردازش درخواست از تلگرام
+     */
+    public function handleRequest($update)
     {
-        $update = json_decode($input, true);
-        if (!$update) {
-            $this->logger->debug('Invalid update', ['update' => $update]);
-            return;
-        }
+        // لاگ کردن update برای دیباگ (اختیاری)
+        // $this->logger->log(json_encode($update));
 
-        $this->logger->debug('Update received', ['update' => $update]);
-
-        // Log all messages (except bot's own)
         if (isset($update['message'])) {
-            $botInfo = $this->api->request('getMe');
-            $botId = $botInfo && isset($botInfo['result']['id']) ? (int)$botInfo['result']['id'] : 0;
-            $senderId = isset($update['message']['from']['id']) ? (int)$update['message']['from']['id'] : 0;
-            if ($senderId !== $botId) {
-                $this->messageLogger->logMessage($update);
-            }
-        }
+            $message = $update['message'];
+            $chat_id = $message['chat']['id'];
+            $user_id = $message['from']['id'];
 
-        // Handle new members for welcome
-        if (isset($update['message']['new_chat_members'])) {
-            $this->handleNewMembers($update);
-            return;
-        }
-
-        // If no text, it might be a media message – check locks
-        if (!isset($update['message']['text'])) {
-            $this->handleNonCommandMessage($update);
-            return;
-        }
-
-        // Parse command
-        $parsed = $this->requestHandler->parseCommand($update);
-        if ($parsed) {
-            $command = $parsed['command'];
-            $args = $parsed['args'];
-
-            $moduleInfo = $this->moduleManager->getModuleInfo($command);
-            if (!$moduleInfo) {
-                $this->sendUnknownCommand($update, $command);
-                return;
+            // ========== بررسی سکوت ==========
+            // اگر کاربر در این گروه ساکت باشد، پیام را حذف می‌کنیم و ادامه نمی‌دهیم
+            if ($this->muteManager->isMuted($chat_id, $user_id)) {
+                // حذف پیام
+                $this->telegram->deleteMessage($chat_id, $message['message_id']);
+                // (اختیاری) ارسال اعلان خصوصی به کاربر
+                // $this->telegram->sendMessage($user_id, "شما در این گروه ساکت هستید و نمی‌توانید پیام ارسال کنید.");
+                return; // توقف پردازش
             }
 
-            $allowedInPrivate = $moduleInfo['allowed_in_private'] ?? false;
-            $chatType = $update['message']['chat']['type'] ?? 'private';
-            if (!$allowedInPrivate && $chatType === 'private') {
-                $this->sendError($update, $this->getLocalizedError($update, 'private_not_allowed'));
-                return;
-            }
-
-            $authorizedOnly = $moduleInfo['authorized_only'] ?? true;
-            if ($authorizedOnly) {
-                $requiredRole = $moduleInfo['required_role'] ?? 'group_admin';
-                if (!$this->auth->authorize($update, $command, $requiredRole)) {
-                    $this->sendUnauthorized($update);
-                    return;
+            // ========== پردازش دستورات ==========
+            if (isset($message['text'])) {
+                $text = $message['text'];
+                $command = $this->extractCommand($text);
+                if ($command) {
+                    $params = $this->extractParams($text, $command);
+                    // بررسی اینکه آیا دستور در command_map وجود دارد
+                    $moduleClass = $this->moduleManager->getModuleForCommand($command);
+                    if ($moduleClass) {
+                        // اجرای ماژول
+                        $module = new $moduleClass(
+                            $this->muteManager,
+                            $this->telegram,
+                            $this->db,
+                            $this->logger
+                        );
+                        $module->execute($message, $params);
+                        return;
+                    }
                 }
             }
 
-            // Log command execution (only for authorized users)
-            if ($authorizedOnly) {
-                $this->commandLogger->logCommand($update, $command, $args);
-            }
-
-            try {
-                $this->moduleManager->execute($command, $args, $update, $this->api);
-                $this->logger->info("Command '{$command}' executed", ['user' => $update['message']['from']['id']]);
-            } catch (ModuleNotFoundException $e) {
-                $this->logger->error($e->getMessage());
-                $this->sendError($update, $this->getLocalizedError($update, 'module_not_found'));
-            } catch (\Exception $e) {
-                $this->logger->error('Module execution error: ' . $e->getMessage(), ['trace' => $e->getTraceAsString()]);
-                $this->sendError($update, $this->getLocalizedError($update, 'internal_error'));
-            }
-        } else {
-            // Not a command – handle as locked content
-            $this->handleNonCommandMessage($update);
+            // ========== لاگ پیام (برای حذف هنگام سکوت و سایر کاربردها) ==========
+            $this->logMessage($message);
         }
+
+        // سایر نوع‌های update (مثلاً callback_query) را می‌توانید اضافه کنید
     }
 
-    private function handleNewMembers(array $update): void
+    /**
+     * استخراج دستور از متن (با پشتیبانی از /command و همچنین دستورات فارسی بدون اسلش)
+     */
+    private function extractCommand($text)
     {
-        $message = $update['message'] ?? null;
-        if (!$message) return;
-        $chat = $message['chat'];
-        $chatId = $chat['id'];
-        $chatType = $chat['type'] ?? '';
-        if ($chatType !== 'group' && $chatType !== 'supergroup') return;
-        if (!$this->welcomeManager->isWelcomeEnabled($chatId)) return;
-
-        $newMembers = $message['new_chat_members'] ?? [];
-        if (empty($newMembers)) return;
-
-        $language = $this->welcomeManager->getWelcomeLanguage($chatId);
-        foreach ($newMembers as $member) {
-            $botInfo = $this->api->request('getMe');
-            if ($botInfo && isset($botInfo['result']['id']) && $botInfo['result']['id'] == $member['id']) continue;
-
-            $firstName = $member['first_name'] ?? '';
-            $username = $member['username'] ?? '';
-            $userId = $member['id'] ?? 0;
-            $mention = $username ? "@{$username}" : "<a href='tg://user?id={$userId}'>{$firstName}</a>";
-
-            if ($language === 'fa') {
-                $welcomeText = "🎉 به گروه خوش آمدید {$mention}!\nامیدواریم از حضور در این گروه لذت ببرید.";
-            } else {
-                $welcomeText = "🎉 Welcome to the group {$mention}!\nWe hope you enjoy being here.";
-            }
-            $this->api->sendMessage($chatId, $welcomeText, null, 'HTML');
+        // اگر با / شروع شود، دستور است
+        if (strpos($text, '/') === 0) {
+            $parts = explode(' ', $text);
+            return $parts[0];
         }
+        // بررسی دستورات فارسی (که ممکن است بدون / باشند)
+        // از command_map برای تشخیص استفاده می‌کنیم
+        $allCommands = $this->config['command_map'] ?? [];
+        foreach ($allCommands as $cmd => $module) {
+            if (strpos($text, $cmd) === 0) {
+                return $cmd;
+            }
+        }
+        return null;
     }
 
-    private function handleNonCommandMessage(array $update): void
+    /**
+     * استخراج پارامترهای دستور
+     */
+    private function extractParams($text, $command)
     {
-        $message = $update['message'] ?? null;
-        if (!$message) return;
-        $chat = $message['chat'];
-        $chatId = $chat['id'];
-        $chatType = $chat['type'] ?? '';
-        if ($chatType !== 'group' && $chatType !== 'supergroup') return;
-
-        if ($this->auth->isAtLeastGroupAdmin($update)) {
-            return;
+        $params = [];
+        $after = trim(substr($text, strlen($command)));
+        if ($after) {
+            $params['raw'] = $after;
+            // می‌توانید پارامترها را تجزیه کنید
+            // برای سادگی، تمام متن بعد از دستور را به عنوان reason در نظر می‌گیریم
+            $params['reason'] = $after;
         }
-
-        $messageId = $message['message_id'];
-        // Text
-        if (isset($message['text']) && $message['text'] !== '') {
-            if ($this->lockManager->isLocked($chatId, 'messages')) {
-                $this->api->request('deleteMessage', ['chat_id' => $chatId, 'message_id' => $messageId]);
-                $this->logger->info("Deleted text from non-admin in locked group {$chatId}");
-            }
-        }
-        // Sticker
-        if (isset($message['sticker'])) {
-            if ($this->lockManager->isLocked($chatId, 'stickers')) {
-                $this->api->request('deleteMessage', ['chat_id' => $chatId, 'message_id' => $messageId]);
-                $this->logger->info("Deleted sticker from non-admin in locked group {$chatId}");
-            }
-        }
-        // Photo
-        if (isset($message['photo'])) {
-            if ($this->lockManager->isLocked($chatId, 'photos')) {
-                $this->api->request('deleteMessage', ['chat_id' => $chatId, 'message_id' => $messageId]);
-                $this->logger->info("Deleted photo from non-admin in locked group {$chatId}");
-            }
-        }
-        // Video
-        if (isset($message['video'])) {
-            if ($this->lockManager->isLocked($chatId, 'videos')) {
-                $this->api->request('deleteMessage', ['chat_id' => $chatId, 'message_id' => $messageId]);
-                $this->logger->info("Deleted video from non-admin in locked group {$chatId}");
-            }
-        }
-        // GIF / Animation
-        if (isset($message['animation'])) {
-            if ($this->lockManager->isLocked($chatId, 'gifs')) {
-                $this->api->request('deleteMessage', ['chat_id' => $chatId, 'message_id' => $messageId]);
-                $this->logger->info("Deleted GIF from non-admin in locked group {$chatId}");
-            }
-        }
-        // NEW: Voice
-        if (isset($message['voice'])) {
-            if ($this->lockManager->isLocked($chatId, 'voice')) {
-                $this->api->request('deleteMessage', ['chat_id' => $chatId, 'message_id' => $messageId]);
-                $this->logger->info("Deleted voice from non-admin in locked group {$chatId}");
-            }
-        }
-        // NEW: Video note
-        if (isset($message['video_note'])) {
-            if ($this->lockManager->isLocked($chatId, 'video_notes')) {
-                $this->api->request('deleteMessage', ['chat_id' => $chatId, 'message_id' => $messageId]);
-                $this->logger->info("Deleted video note from non-admin in locked group {$chatId}");
-            }
-        }
+        return $params;
     }
 
-    private function getLocalizedError(array $update, string $key): string
+    /**
+     * ذخیره پیام در دیتابیس برای لاگ
+     */
+    private function logMessage($message)
     {
-        $lang = 'en';
-        $text = $update['message']['text'] ?? '';
-        if (preg_match('/[\x{0600}-\x{06FF}]/u', $text)) $lang = 'fa';
-        $errors = [
-            'private_not_allowed' => ['en' => "❌ This command can only be used in groups.", 'fa' => "❌ این دستور فقط در گروه قابل اجراست."],
-            'module_not_found' => ['en' => "❌ Internal error: Module not found.", 'fa' => "❌ خطای داخلی: ماژول یافت نشد."],
-            'internal_error' => ['en' => "❌ An internal error occurred. Please try again later.", 'fa' => "❌ خطای داخلی رخ داده است. لطفاً بعداً تلاش کنید."],
-        ];
-        return $errors[$key][$lang] ?? $errors[$key]['en'];
+        $chat_id = $message['chat']['id'];
+        $user_id = $message['from']['id'];
+        $message_id = $message['message_id'];
+        $text = $message['text'] ?? '';
+        $type = $this->detectMessageType($message);
+
+        $stmt = $this->db->prepare("INSERT INTO bot_messages (group_id, user_id, message_id, text, type, sent_at) VALUES (?, ?, ?, ?, ?, NOW())");
+        $stmt->bind_param("iiiss", $chat_id, $user_id, $message_id, $text, $type);
+        $stmt->execute();
     }
 
-    private function sendUnknownCommand(array $update, string $command): void
+    private function detectMessageType($message)
     {
-        $chatId = $update['message']['chat']['id'];
-        $msgId = $update['message']['message_id'];
-        $persian = [
-            'ست ادمین', 'حذف ادمین', 'لیست ادمین‌ها',
-            'خوش آمد بگو', 'حذف خوش آمدگویی',
-            'پین', 'حذف پین', 'آیدی',
-            'حذف', 'پاکسازی',
-            'قفل پیام', 'حذف قفل پیام',
-            'قفل استیکر', 'حذف قفل استیکر',
-            'قفل عکس', 'حذف قفل عکس',
-            'قفل فیلم', 'حذف قفل فیلم',
-            'قفل گیف', 'حذف قفل گیف',
-            'قفل ویس', 'حذف قفل ویس',              // NEW
-            'قفل ویدئو مسیج', 'حذف قفل ویدئو مسیج' // NEW
-        ];
-        $text = in_array($command, $persian) ? "❌ دستور <b>{$command}</b> تعریف نشده است." : "❌ Command <b>{$command}</b> is not defined.";
-        $this->api->sendMessage($chatId, $text, $msgId);
-    }
-
-    private function sendUnauthorized(array $update): void
-    {
-        $chatId = $update['message']['chat']['id'];
-        $msgId = $update['message']['message_id'];
-        $lang = 'en';
-        $text = $update['message']['text'] ?? '';
-        if (preg_match('/[\x{0600}-\x{06FF}]/u', $text)) $lang = 'fa';
-        $msg = $lang === 'fa' ? "⛔ شما مجوز اجرای این دستور را ندارید." : "⛔ You don't have permission to execute this command.";
-        $this->api->sendMessage($chatId, $msg, $msgId);
-    }
-
-    private function sendError(array $update, string $message): void
-    {
-        $chatId = $update['message']['chat']['id'];
-        $msgId = $update['message']['message_id'];
-        $this->api->sendMessage($chatId, $message, $msgId);
+        if (isset($message['text'])) return 'text';
+        if (isset($message['photo'])) return 'photo';
+        if (isset($message['video'])) return 'video';
+        if (isset($message['document'])) return 'document';
+        if (isset($message['sticker'])) return 'sticker';
+        if (isset($message['voice'])) return 'voice';
+        if (isset($message['video_note'])) return 'video_note';
+        if (isset($message['animation'])) return 'animation';
+        return 'unknown';
     }
 }
