@@ -1,7 +1,3 @@
-Here's a **fully comprehensive README.md** for your project, covering every feature, installation step, command reference, and contribution guide in detail.
-
----
-
 ```markdown
 # 🤖 Quarter TG – Advanced Telegram Group Management Bot
 
@@ -73,7 +69,6 @@ Lock or unlock the following content types:
 - **PHP 7.4** or higher (PHP 8.x recommended)
 - **MySQL** 5.7+ or **MariaDB** 10.2+
 - **cURL** extension enabled
-- **Composer** (optional, but recommended for dependency management)
 - A Telegram bot token from [@BotFather](https://t.me/BotFather)
 
 ### 2. Clone the Repository
@@ -100,15 +95,9 @@ This creates all required tables:
 - `bot_mutes` – muted users
 - `bot_warnings` – warning records
 
-### 4. Install Dependencies (Optional)
-If you use Composer:
-```bash
-composer install
-```
-Otherwise, the built‑in autoloader will work.
-
-### 5. Configure the Bot
+### 4. Configure the Bot
 Edit `config/config.php` and fill in your details:
+
 ```php
 <?php
 return [
@@ -123,14 +112,10 @@ return [
     'webhook_secret' => 'your_random_secret_string', // optional but recommended
     'logs_dir' => __DIR__ . '/../logs',
     'cache_dir' => __DIR__ . '/../cache',
-    'command_map' => [
-        // All command mappings (already pre‑configured)
-        // Add custom commands here
-    ],
 ];
 ```
 
-### 6. Set Permissions
+### 5. Set Permissions
 Ensure the `logs/` and `cache/` directories are writable:
 ```bash
 chmod 755 logs cache
@@ -290,7 +275,6 @@ quarter_tg/
 
 **Example:**
 ```php
-// src/Modules/MyCommandModule.php
 <?php
 namespace Modules;
 
@@ -323,12 +307,6 @@ class MyCommandModule
     'دستورمن'   => 'MyCommandModule',
 ],
 ```
-
-### Adding a New Language
-The bot already supports Persian and English. To add another language:
-1. Extend the `LanguageHelper` class.
-2. Add translations for all responses.
-3. Modify the command detection logic to recognise the new language.
 
 ---
 
@@ -373,6 +351,9 @@ Contributions are welcome! Whether it's a bug fix, new feature, or documentation
 - Update the README if you add new features.
 - Test your changes before submitting.
 
+**Report issues here:**  
+👉 [GitHub Issues](https://github.com/parhampa/quarter_tg/issues)
+
 ---
 
 ## 📬 Contact
@@ -416,5 +397,3 @@ _Keep your groups safe, organized, and fun._
 ```
 
 ---
-
-This README is now **fully comprehensive**, covering every aspect of your project. Just copy and paste it into your `README.md` file, commit, and push. Let me know if you need any adjustments!
