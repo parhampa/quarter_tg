@@ -1,154 +1,219 @@
--- ============================================================
--- دیتابیس ربات مدیریت گروه تلگرام (Quarter TG)
--- ============================================================
+-- --------------------------------------------------------
+-- Host: localhost
+-- Generation Time: 
+-- Server version: 5.7.33
+-- PHP Version: 7.4.33
+-- --------------------------------------------------------
 
 SET SQL_MODE = "NO_AUTO_VALUE_ON_ZERO";
+SET AUTOCOMMIT = 0;
+START TRANSACTION;
 SET time_zone = "+00:00";
 
 -- --------------------------------------------------------
--- جدول ادمین‌های اصلی ربات (صاحبان)
+-- Table structure for table `bot_admins`
 -- --------------------------------------------------------
-CREATE TABLE IF NOT EXISTS `bot_admins` (
-  `id` int(11) NOT NULL AUTO_INCREMENT,
+
+CREATE TABLE `bot_admins` (
+  `id` int(11) NOT NULL,
   `user_id` bigint(20) NOT NULL,
-  `group_id` bigint(20) NOT NULL,
-  `is_owner` tinyint(1) NOT NULL DEFAULT 0,
-  `added_at` datetime NOT NULL,
-  PRIMARY KEY (`id`),
-  UNIQUE KEY `user_group` (`user_id`, `group_id`)
+  `username` varchar(255) DEFAULT NULL,
+  `first_name` varchar(255) DEFAULT NULL,
+  `last_name` varchar(255) DEFAULT NULL,
+  `added_by` bigint(20) DEFAULT NULL,
+  `added_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 -- --------------------------------------------------------
--- جدول ادمین‌های فرعی (مدیران گروه)
+-- Table structure for table `bot_sub_admins`
 -- --------------------------------------------------------
-CREATE TABLE IF NOT EXISTS `bot_sub_admins` (
-  `id` int(11) NOT NULL AUTO_INCREMENT,
+
+CREATE TABLE `bot_sub_admins` (
+  `id` int(11) NOT NULL,
+  `group_id` bigint(20) NOT NULL,
   `user_id` bigint(20) NOT NULL,
-  `group_id` bigint(20) NOT NULL,
-  `added_by` bigint(20) NOT NULL,
-  `added_at` datetime NOT NULL,
-  PRIMARY KEY (`id`),
-  UNIQUE KEY `user_group` (`user_id`, `group_id`)
+  `username` varchar(255) DEFAULT NULL,
+  `first_name` varchar(255) DEFAULT NULL,
+  `last_name` varchar(255) DEFAULT NULL,
+  `added_by` bigint(20) DEFAULT NULL,
+  `added_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 -- --------------------------------------------------------
--- جدول مجوزهای دسترسی (اختیاری)
+-- Table structure for table `bot_permissions`
 -- --------------------------------------------------------
-CREATE TABLE IF NOT EXISTS `bot_permissions` (
-  `id` int(11) NOT NULL AUTO_INCREMENT,
-  `user_id` bigint(20) NOT NULL,
+
+CREATE TABLE `bot_permissions` (
+  `id` int(11) NOT NULL,
   `group_id` bigint(20) NOT NULL,
-  `command` varchar(50) NOT NULL,
-  `allowed` tinyint(1) NOT NULL DEFAULT 1,
-  PRIMARY KEY (`id`),
-  UNIQUE KEY `user_group_command` (`user_id`, `group_id`, `command`)
+  `command` varchar(100) NOT NULL,
+  `allowed` tinyint(1) NOT NULL DEFAULT '1'
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 -- --------------------------------------------------------
--- جدول تنظیمات خوش‌آمدگویی
+-- Table structure for table `bot_welcome_settings`
 -- --------------------------------------------------------
-CREATE TABLE IF NOT EXISTS `bot_welcome_settings` (
-  `id` int(11) NOT NULL AUTO_INCREMENT,
+
+CREATE TABLE `bot_welcome_settings` (
+  `id` int(11) NOT NULL,
   `group_id` bigint(20) NOT NULL,
-  `enabled` tinyint(1) NOT NULL DEFAULT 0,
-  `message_fa` text DEFAULT NULL,
-  `message_en` text DEFAULT NULL,
-  PRIMARY KEY (`id`),
-  UNIQUE KEY `group_id` (`group_id`)
+  `enabled` tinyint(1) NOT NULL DEFAULT '0',
+  `message` text
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 -- --------------------------------------------------------
--- جدول قفل‌های گروه
+-- Table structure for table `bot_group_locks`
 -- --------------------------------------------------------
-CREATE TABLE IF NOT EXISTS `bot_group_locks` (
-  `id` int(11) NOT NULL AUTO_INCREMENT,
+
+CREATE TABLE `bot_group_locks` (
+  `id` int(11) NOT NULL,
   `group_id` bigint(20) NOT NULL,
-  `lock_type` varchar(30) NOT NULL,
-  `locked` tinyint(1) NOT NULL DEFAULT 0,
-  PRIMARY KEY (`id`),
-  UNIQUE KEY `group_lock` (`group_id`, `lock_type`)
+  `lock_text` tinyint(1) NOT NULL DEFAULT '0',
+  `lock_photo` tinyint(1) NOT NULL DEFAULT '0',
+  `lock_video` tinyint(1) NOT NULL DEFAULT '0',
+  `lock_gif` tinyint(1) NOT NULL DEFAULT '0',
+  `lock_sticker` tinyint(1) NOT NULL DEFAULT '0',
+  `lock_voice` tinyint(1) NOT NULL DEFAULT '0',
+  `lock_video_note` tinyint(1) NOT NULL DEFAULT '0',
+  `lock_link` tinyint(1) NOT NULL DEFAULT '0'   -- ✅ ستون جدید برای قفل لینک
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 -- --------------------------------------------------------
--- جدول لاگ پیام‌ها
+-- Table structure for table `bot_messages`
 -- --------------------------------------------------------
-CREATE TABLE IF NOT EXISTS `bot_messages` (
-  `id` int(11) NOT NULL AUTO_INCREMENT,
+
+CREATE TABLE `bot_messages` (
+  `id` int(11) NOT NULL,
   `group_id` bigint(20) NOT NULL,
   `user_id` bigint(20) NOT NULL,
   `message_id` int(11) NOT NULL,
-  `text` text DEFAULT NULL,
-  `type` varchar(20) DEFAULT NULL,
-  `sent_at` datetime NOT NULL,
-  PRIMARY KEY (`id`),
-  KEY `group_user` (`group_id`, `user_id`)
+  `message_text` text,
+  `message_type` varchar(50) DEFAULT NULL,
+  `sent_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 -- --------------------------------------------------------
--- جدول لاگ دستورات ادمین
+-- Table structure for table `bot_command_logs`
 -- --------------------------------------------------------
-CREATE TABLE IF NOT EXISTS `bot_command_logs` (
-  `id` int(11) NOT NULL AUTO_INCREMENT,
-  `admin_id` bigint(20) NOT NULL,
+
+CREATE TABLE `bot_command_logs` (
+  `id` int(11) NOT NULL,
   `group_id` bigint(20) NOT NULL,
+  `admin_id` bigint(20) NOT NULL,
   `command` varchar(100) NOT NULL,
-  `target` varchar(100) DEFAULT NULL,
-  `executed_at` datetime NOT NULL,
-  PRIMARY KEY (`id`)
+  `params` text,
+  `executed_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 -- --------------------------------------------------------
--- جدول کاربران بن‌شده
+-- Table structure for table `bot_bans`
 -- --------------------------------------------------------
-CREATE TABLE IF NOT EXISTS `bot_bans` (
-  `id` int(11) NOT NULL AUTO_INCREMENT,
+
+CREATE TABLE `bot_bans` (
+  `id` int(11) NOT NULL,
   `group_id` bigint(20) NOT NULL,
   `user_id` bigint(20) NOT NULL,
   `banned_by` bigint(20) NOT NULL,
-  `banned_at` datetime NOT NULL,
-  `reason` text DEFAULT NULL,
-  PRIMARY KEY (`id`),
-  UNIQUE KEY `group_user` (`group_id`, `user_id`)
+  `reason` text,
+  `banned_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 -- --------------------------------------------------------
--- جدول اطلاعات کاربران (اختیاری)
+-- Table structure for table `bot_mutes`
 -- --------------------------------------------------------
-CREATE TABLE IF NOT EXISTS `bot_users` (
-  `id` int(11) NOT NULL AUTO_INCREMENT,
-  `user_id` bigint(20) NOT NULL,
-  `first_name` varchar(255) DEFAULT NULL,
-  `last_name` varchar(255) DEFAULT NULL,
-  `username` varchar(255) DEFAULT NULL,
-  `last_seen` datetime DEFAULT NULL,
-  PRIMARY KEY (`id`),
-  UNIQUE KEY `user_id` (`user_id`)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
--- --------------------------------------------------------
--- جدول کاربران ساکت‌شده (Mute)
--- --------------------------------------------------------
-CREATE TABLE IF NOT EXISTS `bot_mutes` (
-  `id` int(11) NOT NULL AUTO_INCREMENT,
+CREATE TABLE `bot_mutes` (
+  `id` int(11) NOT NULL,
   `group_id` bigint(20) NOT NULL,
   `user_id` bigint(20) NOT NULL,
   `muted_by` bigint(20) NOT NULL,
-  `muted_at` datetime NOT NULL,
-  `reason` text DEFAULT NULL,
-  PRIMARY KEY (`id`),
-  UNIQUE KEY `group_user` (`group_id`, `user_id`)
+  `muted_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 -- --------------------------------------------------------
--- جدول اخطارهای کاربران (Warning)
+-- Table structure for table `bot_warnings`
 -- --------------------------------------------------------
-CREATE TABLE IF NOT EXISTS `bot_warnings` (
-  `id` int(11) NOT NULL AUTO_INCREMENT,
+
+CREATE TABLE `bot_warnings` (
+  `id` int(11) NOT NULL,
   `group_id` bigint(20) NOT NULL,
   `user_id` bigint(20) NOT NULL,
   `warned_by` bigint(20) NOT NULL,
-  `warned_at` datetime NOT NULL,
-  `reason` text DEFAULT NULL,
-  PRIMARY KEY (`id`),
-  KEY `group_user` (`group_id`, `user_id`)
+  `reason` text,
+  `warned_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+-- --------------------------------------------------------
+-- Indexes and AUTO_INCREMENT
+-- --------------------------------------------------------
+
+ALTER TABLE `bot_admins`
+  ADD PRIMARY KEY (`id`),
+  ADD UNIQUE KEY `user_id` (`user_id`);
+
+ALTER TABLE `bot_sub_admins`
+  ADD PRIMARY KEY (`id`),
+  ADD UNIQUE KEY `group_user` (`group_id`,`user_id`);
+
+ALTER TABLE `bot_permissions`
+  ADD PRIMARY KEY (`id`),
+  ADD UNIQUE KEY `group_command` (`group_id`,`command`);
+
+ALTER TABLE `bot_welcome_settings`
+  ADD PRIMARY KEY (`id`),
+  ADD UNIQUE KEY `group_id` (`group_id`);
+
+ALTER TABLE `bot_group_locks`
+  ADD PRIMARY KEY (`id`),
+  ADD UNIQUE KEY `group_id` (`group_id`);
+
+ALTER TABLE `bot_messages`
+  ADD PRIMARY KEY (`id`),
+  ADD KEY `group_id` (`group_id`);
+
+ALTER TABLE `bot_command_logs`
+  ADD PRIMARY KEY (`id`),
+  ADD KEY `group_id` (`group_id`);
+
+ALTER TABLE `bot_bans`
+  ADD PRIMARY KEY (`id`),
+  ADD UNIQUE KEY `group_user` (`group_id`,`user_id`);
+
+ALTER TABLE `bot_mutes`
+  ADD PRIMARY KEY (`id`),
+  ADD UNIQUE KEY `group_user` (`group_id`,`user_id`);
+
+ALTER TABLE `bot_warnings`
+  ADD PRIMARY KEY (`id`);
+
+ALTER TABLE `bot_admins`
+  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT;
+
+ALTER TABLE `bot_sub_admins`
+  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT;
+
+ALTER TABLE `bot_permissions`
+  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT;
+
+ALTER TABLE `bot_welcome_settings`
+  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT;
+
+ALTER TABLE `bot_group_locks`
+  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT;
+
+ALTER TABLE `bot_messages`
+  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT;
+
+ALTER TABLE `bot_command_logs`
+  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT;
+
+ALTER TABLE `bot_bans`
+  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT;
+
+ALTER TABLE `bot_mutes`
+  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT;
+
+ALTER TABLE `bot_warnings`
+  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT;
+
+COMMIT;

@@ -1,105 +1,177 @@
 <?php
 
 return [
-    // توکن ربات تلگرام
+    /*
+    |--------------------------------------------------------------------------
+    | Telegram Bot Token
+    |--------------------------------------------------------------------------
+    */
     'bot_token' => 'YOUR_BOT_TOKEN_HERE',
 
-    // تنظیمات دیتابیس
-    'db' => [
-        'host' => 'localhost',
-        'username' => 'your_db_user',
-        'password' => 'your_db_password',
-        'database' => 'quarter_tg',
-        'charset' => 'utf8mb4',
+    /*
+    |--------------------------------------------------------------------------
+    | Database Configuration
+    |--------------------------------------------------------------------------
+    */
+    'database' => [
+        'host'     => 'localhost',
+        'name'     => 'quarter_tg_db',
+        'user'     => 'root',
+        'password' => '',
+        'charset'  => 'utf8mb4',
     ],
 
-    // وب‌هوک سکرت (برای امنیت بیشتر)
-    'webhook_secret' => 'your_secret_string',
+    /*
+    |--------------------------------------------------------------------------
+    | Webhook Settings
+    |--------------------------------------------------------------------------
+    */
+    'webhook' => [
+        'url'    => 'https://your-domain.com/quarter_tg/index.php',
+        'secret' => 'your-secret-key-here', // Optional but recommended
+    ],
 
-    // مسیرهای لاگ و کش (توسط bootstrap تعریف می‌شوند)
-    'logs_dir' => __DIR__ . '/../logs',
-    'cache_dir' => __DIR__ . '/../cache',
+    /*
+    |--------------------------------------------------------------------------
+    | Cache Settings
+    |--------------------------------------------------------------------------
+    */
+    'cache' => [
+        'enabled' => true,
+        'ttl'     => 300, // seconds
+        'path'    => __DIR__ . '/../cache/',
+    ],
 
-    // ============================================================
-    // نقشه دستورات به ماژول‌ها (command_map)
-    // ============================================================
+    /*
+    |--------------------------------------------------------------------------
+    | Logging
+    |--------------------------------------------------------------------------
+    */
+    'logging' => [
+        'enabled' => true,
+        'path'    => __DIR__ . '/../logs/bot.log',
+        'level'   => 'info', // debug, info, error
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
+    | Owner ID (Super Admin)
+    |--------------------------------------------------------------------------
+    */
+    'owner_id' => 123456789, // Your Telegram user ID
+
+    /*
+    |--------------------------------------------------------------------------
+    | Default Language
+    |--------------------------------------------------------------------------
+    */
+    'default_language' => 'fa', // fa or en
+
+    /*
+    |--------------------------------------------------------------------------
+    | Command Mapping
+    |--------------------------------------------------------------------------
+    */
     'command_map' => [
-        // ---------- دستورات انگلیسی ----------
-        '/start'       => 'StartModule',
-        '/help'        => 'HelpModule',
-        'help'         => 'HelpModule',
+        // ========================
+        // مدیریت ادمین‌ها
+        // ========================
         '/addadmin'    => 'AddAdminModule',
-        '/remadmin'    => 'RemoveAdminModule',
-        '/listadmin'   => 'ListAdminsModule',
-        '/pin'         => 'PinModule',
-        '/rempin'      => 'UnpinModule',
-        '/id'          => 'GetIdModule',
-        '/del'         => 'DeleteModule',
-        '/clear'       => 'ClearModule',
-        '/ban'         => 'BanModule',
-        '/unban'       => 'UnbanModule',
-        '/listbans'    => 'ListBansModule',
-        '/lockmsg'     => 'LockMsgModule',
-        '/dislockmsg'  => 'UnlockMsgModule',
-        '/locksticker' => 'LockStickerModule',
-        '/dislocksticker' => 'UnlockStickerModule',
-        '/lockpic'     => 'LockPhotoModule',
-        '/dislockpic'  => 'UnlockPhotoModule',
-        '/lockfilm'    => 'LockVideoModule',
-        '/dislockfilm' => 'UnlockVideoModule',
-        '/lockgif'     => 'LockGifModule',
-        '/dislockgif'  => 'UnlockGifModule',
-        '/lockvoice'   => 'LockVoiceModule',
-        '/remlockvoice'=> 'UnlockVoiceModule',
-        '/lockvm'      => 'LockVideoNoteModule',
-        '/remlockvm'   => 'UnlockVideoNoteModule',
-        '/sayhello'    => 'SayHelloModule',
-        '/remsayhello' => 'RemoveSayHelloModule',
-
-        // ---------- دستورات Mute/Unmute ----------
-        '/mute'        => 'MuteModule',
-        '/unmute'      => 'UnmuteModule',
-
-        // ---------- دستورات Warning/RemoveWarning ----------
-        '/warning'     => 'WarningModule',
-        '/remwarning'  => 'RemoveWarningModule',
-
-        // ---------- دستورات فارسی ----------
         'ست ادمین'     => 'AddAdminModule',
+        '/remadmin'    => 'RemoveAdminModule',
         'حذف ادمین'    => 'RemoveAdminModule',
+        '/listadmin'   => 'ListAdminsModule',
         'لیست ادمین‌ها' => 'ListAdminsModule',
-        'پین'          => 'PinModule',
-        'حذف پین'      => 'UnpinModule',
-        'آیدی'         => 'GetIdModule',
-        'حذف'          => 'DeleteModule',
-        'پاکسازی'      => 'ClearModule',
-        'بن'           => 'BanModule',
-        'آن‌بن'        => 'UnbanModule',
-        'لیست بن‌ها'   => 'ListBansModule',
-        'قفل پیام'     => 'LockMsgModule',
-        'رفع قفل پیام' => 'UnlockMsgModule',
-        'قفل استیکر'   => 'LockStickerModule',
-        'رفع قفل استیکر' => 'UnlockStickerModule',
-        'قفل عکس'      => 'LockPhotoModule',
-        'رفع قفل عکس'  => 'UnlockPhotoModule',
-        'قفل فیلم'     => 'LockVideoModule',
-        'رفع قفل فیلم' => 'UnlockVideoModule',
-        'قفل گیف'      => 'LockGifModule',
-        'رفع قفل گیف'  => 'UnlockGifModule',
-        'قفل ویس'      => 'LockVoiceModule',
-        'رفع قفل ویس'  => 'UnlockVoiceModule',
-        'قفل ویدئو مسیج' => 'LockVideoNoteModule',
-        'رفع قفل ویدئو مسیج' => 'UnlockVideoNoteModule',
-        'خوش آمد بگو'  => 'SayHelloModule',
-        'خوش آمد نگو'  => 'RemoveSayHelloModule',
-        'راهنما'       => 'HelpModule',
 
-        // ---------- دستورات فارسی Mute/Unmute ----------
+        // ========================
+        // مدیریت کاربران (بن، سکوت، اخطار)
+        // ========================
+        '/ban'         => 'BanModule',
+        'بن'           => 'BanModule',
+        '/unban'       => 'UnbanModule',
+        'آن‌بن'        => 'UnbanModule',
+        '/listbans'    => 'ListBansModule',
+        'لیست بن‌ها'    => 'ListBansModule',
+
+        '/mute'        => 'MuteModule',
         'سکوت'         => 'MuteModule',
+        '/unmute'      => 'UnmuteModule',
         'حذف سکوت'     => 'UnmuteModule',
 
-        // ---------- دستورات فارسی Warning/RemoveWarning ----------
+        '/warning'     => 'WarningModule',
         'اخطار'        => 'WarningModule',
+        '/remwarning'  => 'RemoveWarningModule',
         'حذف اخطار'    => 'RemoveWarningModule',
+
+        // ========================
+        // مدیریت پیام‌ها
+        // ========================
+        '/pin'         => 'PinModule',
+        'پین'          => 'PinModule',
+        '/rempin'      => 'UnpinModule',
+        'حذف پین'      => 'UnpinModule',
+        '/del'         => 'DeleteModule',
+        'حذف'          => 'DeleteModule',
+        '/clear'       => 'ClearModule',
+        'پاکسازی'      => 'ClearModule',
+        '/id'          => 'GetIdModule',
+        'آیدی'         => 'GetIdModule',
+
+        // ========================
+        // قفل‌ها و رفع قفل
+        // ========================
+        '/lockmsg'     => 'LockTextModule',
+        'قفل پیام'     => 'LockTextModule',
+        '/dislockmsg'  => 'RemLockTextModule',
+        'رفع قفل پیام' => 'RemLockTextModule',
+
+        '/lockpic'     => 'LockPhotoModule',
+        'قفل عکس'      => 'LockPhotoModule',
+        '/dislockpic'  => 'RemLockPhotoModule',
+        'رفع قفل عکس'  => 'RemLockPhotoModule',
+
+        '/lockfilm'    => 'LockVideoModule',
+        'قفل فیلم'     => 'LockVideoModule',
+        '/dislockfilm' => 'RemLockVideoModule',
+        'رفع قفل فیلم' => 'RemLockVideoModule',
+
+        '/lockgif'     => 'LockGifModule',
+        'قفل گیف'      => 'LockGifModule',
+        '/dislockgif'  => 'RemLockGifModule',
+        'رفع قفل گیف'  => 'RemLockGifModule',
+
+        '/locksticker' => 'LockStickerModule',
+        'قفل استیکر'   => 'LockStickerModule',
+        '/dislocksticker' => 'RemLockStickerModule',
+        'رفع قفل استیکر' => 'RemLockStickerModule',
+
+        '/lockvoice'   => 'LockVoiceModule',
+        'قفل ویس'      => 'LockVoiceModule',
+        '/remlockvoice' => 'RemLockVoiceModule',
+        'رفع قفل ویس'   => 'RemLockVoiceModule',
+
+        '/lockvm'      => 'LockVideoNoteModule',
+        'قفل ویدئو مسیج' => 'LockVideoNoteModule',
+        '/remlockvm'   => 'RemLockVideoNoteModule',
+        'رفع قفل ویدئو مسیج' => 'RemLockVideoNoteModule',
+
+        // ========================
+        // قفل/رفع قفل لینک (جدید)
+        // ========================
+        '/locklink'    => 'LockLinkModule',
+        'قفل لینک'     => 'LockLinkModule',
+        '/remlocklink' => 'RemLockLinkModule',
+        'رفع قفل لینک'  => 'RemLockLinkModule',
+
+        // ========================
+        // سایر
+        // ========================
+        '/sayhello'    => 'WelcomeModule',
+        'خوش آمد بگو'  => 'WelcomeModule',
+        '/remsayhello' => 'RemWelcomeModule',
+        'خوش آمد نگو'  => 'RemWelcomeModule',
+
+        '/help'        => 'HelpModule',
+        'راهنما'       => 'HelpModule',
     ],
 ];
