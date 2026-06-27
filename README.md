@@ -1,210 +1,208 @@
-```markdown
-# 🤖 Quarter TG – Advanced Telegram Group Management Bot
+# 🚀 Quarter TG
 
-**Quarter TG** is a powerful, modular Telegram group management bot built with **PHP 7.4+** and **MySQL**. It gives you full control over your groups with a clean, extensible architecture. Add new features without touching the core – just drop in a new module!
+**A modular Telegram group management bot written in PHP 7.4+ with MySQL**
+
+[![PHP Version](https://img.shields.io/badge/PHP-7.4%2B-blue.svg)](https://php.net)
+[![MySQL](https://img.shields.io/badge/MySQL-5.7%2B-orange.svg)](https://mysql.com)
+[![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
+[![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](http://makeapullrequest.com)
 
 ---
 
-## 📋 Table of Contents
+## 📖 Table of Contents
+
+- [Introduction](#-introduction)
 - [Features](#-features)
+- [Prerequisites](#-prerequisites)
 - [Installation](#-installation)
 - [Configuration](#-configuration)
-- [Webhook Setup](#-webhook-setup)
-- [Commands Reference](#-commands-reference)
-  - [English Commands](#-english-commands)
-  - [Persian Commands](#-persian-commands)
+- [Commands](#-commands)
 - [Project Structure](#-project-structure)
-- [Extending the Bot](#-extending-the-bot)
-- [Logging & Caching](#-logging--caching)
 - [Security](#-security)
 - [Contributing](#-contributing)
-- [Contact](#-contact)
 - [License](#-license)
+- [Support](#-support)
+
+---
+
+## 📌 Introduction
+
+**Quarter TG** is a powerful, modular, and easy-to-extend Telegram bot designed to give group administrators full control over their communities. It supports **bilingual commands** (English and Persian) and includes a wide range of moderation tools—from banning and muting to content locking and automated welcome messages.
+
+With its clean architecture and dependency injection, you can add new features without touching the core code—just drop a new module into the `Modules/` directory and register it in the configuration.
 
 ---
 
 ## ✨ Features
 
-### 👥 Admin Management
-- **Add/Remove Admins** – by @mention or reply
-- **List All Admins** – view all group administrators
+### Core Management
+- **Admin Management**: Add/remove/list administrators with granular permissions.
+- **User Moderation**: Ban, unban, mute, unmute, warn (auto‑ban after 3 warnings).
+- **Message Control**: Pin, unpin, delete single messages, or bulk‑delete up to 5000 messages (with a 24‑hour cooldown).
+- **Welcome Messages**: Enable/disable automatic welcome messages for new members.
 
-### 🛡️ User Moderation & Penalties
-- **Ban / Unban** – by @mention, numeric ID, or reply
-- **List Banned Users** – view all banned members
-- **Mute / Unmute** – mute a user; automatically deletes their last 50 messages and blocks new ones
-- **Warning System** – give warnings to users; **auto‑ban** after 3 warnings
-- **Remove Warnings** – clear all warnings for a user
+### Content Locks (Per‑Group)
+Prevent non‑admin users from sending specific types of content:
 
-### 🗑️ Message Management
-- **Pin / Unpin** – pin or unpin a message (by reply)
-- **Delete Message** – delete a single message (by reply)
-- **Clear Chat** – delete last 5000 messages (24‑hour cooldown)
-- **Get User ID** – retrieve numeric ID of a user
+| Lock Type          | Command (English)       | Command (Persian)        |
+|--------------------|-------------------------|--------------------------|
+| Text messages      | `/lockmsg` / `/dislockmsg` | `قفل پیام` / `رفع قفل پیام` |
+| Photos             | `/lockpic` / `/dislockpic` | `قفل عکس` / `رفع قفل عکس` |
+| Videos             | `/lockfilm` / `/dislockfilm` | `قفل فیلم` / `رفع قفل فیلم` |
+| GIFs               | `/lockgif` / `/dislockgif` | `قفل گیف` / `رفع قفل گیف` |
+| Stickers           | `/locksticker` / `/dislocksticker` | `قفل استیکر` / `رفع قفل استیکر` |
+| Voice messages     | `/lockvoice` / `/remlockvoice` | `قفل ویس` / `رفع قفل ویس` |
+| Video notes        | `/lockvm` / `/remlockvm` | `قفل ویدئو مسیج` / `رفع قفل ویدئو مسیج` |
+| **Links** (NEW)    | `/locklink` / `/remlocklink` | `قفل لینک` / `رفع قفل لینک` |
+| **Tags/Mentions** (NEW) | `/locktag` / `/remlocktag` | `قفل تگ` / `رفع قفل تگ` |
 
-### 🔒 Content Locks (Per‑Group)
-Lock or unlock the following content types:
-- Text messages
-- Photos
-- Videos
-- GIFs / Animations
-- Stickers
-- Voice messages
-- Video notes
-
-### 🧩 Additional Features
-- **Welcome Message** – enable/disable per group (customizable)
-- **Bilingual Support** – responds in Persian or English based on command language
-- **Bilingual Help** – Persian with `راهنما`, English with `/help` (admins only)
-- **Full Logging** – all messages and admin commands stored in database
-- **Modular Architecture** – easily add new commands without modifying core
-- **Role‑Based Permissions** – owner, group admin, and sub‑admin levels
-- **File‑Based Caching** – improves performance and reduces DB load
+### Additional Highlights
+- **Bilingual Support**: Commands can be issued in English or Persian; the bot replies in the same language.
+- **Full Logging**: Every message and admin command is logged to the database for auditing.
+- **File‑Based Caching**: Reduces database load with configurable TTL (default 300s).
+- **Secure by Design**: Prepared statements prevent SQL injection; role‑based access control (Owner, Group Admin, Sub‑Admin) prevents privilege escalation.
+- **Modular Architecture**: Add new commands by creating a module class and registering it—no core changes needed.
 
 ---
 
-## 🚀 Installation
+## 📋 Prerequisites
 
-### 1. Prerequisites
-- **PHP 7.4** or higher (PHP 8.x recommended)
-- **MySQL** 5.7+ or **MariaDB** 10.2+
-- **cURL** extension enabled
-- A Telegram bot token from [@BotFather](https://t.me/BotFather)
+- **PHP** 7.4 or higher (with `curl`, `json`, `mysqli`, `mbstring` extensions)
+- **MySQL** 5.7 or higher (or MariaDB 10.2+)
+- **Composer** (for dependency management)
+- A **Telegram Bot Token** (obtain from [@BotFather](https://t.me/botfather))
+- A **public HTTPS endpoint** for the webhook (e.g., a VPS or hosting with SSL)
 
-### 2. Clone the Repository
+---
+
+## 🛠 Installation
+
+### 1. Clone the Repository
 ```bash
 git clone https://github.com/parhampa/quarter_tg.git
 cd quarter_tg
 ```
 
-### 3. Set Up the Database
-Import the database schema:
+### 2. Install Dependencies
 ```bash
-mysql -u your_db_user -p your_database_name < db.sql
+composer install
 ```
+> If you don't have Composer, download it from [getcomposer.org](https://getcomposer.org/).
 
-This creates all required tables:
-- `bot_admins` – main admins
-- `bot_sub_admins` – group admins
-- `bot_permissions` – per‑command permissions
-- `bot_welcome_settings` – welcome message settings
-- `bot_group_locks` – content lock settings
-- `bot_messages` – message logs
-- `bot_command_logs` – command logs
-- `bot_bans` – banned users
-- `bot_mutes` – muted users
-- `bot_warnings` – warning records
+### 3. Set Up the Database
+- Create a new MySQL database (e.g., `quarter_tg`).
+- Import the schema:
+  ```bash
+  mysql -u root -p quarter_tg < db.sql
+  ```
 
 ### 4. Configure the Bot
-Edit `config/config.php` and fill in your details:
-
-```php
-<?php
-return [
-    'bot_token' => 'YOUR_BOT_TOKEN_HERE',
-    'db' => [
-        'host'     => 'localhost',
-        'username' => 'your_db_user',
-        'password' => 'your_db_password',
-        'database' => 'quarter_tg',
-        'charset'  => 'utf8mb4',
-    ],
-    'webhook_secret' => 'your_random_secret_string', // optional but recommended
-    'logs_dir' => __DIR__ . '/../logs',
-    'cache_dir' => __DIR__ . '/../cache',
-];
-```
-
-### 5. Set Permissions
-Ensure the `logs/` and `cache/` directories are writable:
+Copy the example configuration and edit it:
 ```bash
-chmod 755 logs cache
+cp config/config.example.php config/config.php
 ```
+Edit `config/config.php` with your:
+- Telegram Bot Token
+- Database credentials
+- Webhook URL and secret (recommended)
+- Owner ID (your Telegram user ID)
+- Cache and logging preferences
+
+### 5. Set Webhook
+Run the following command in your terminal (replace placeholders):
+```bash
+curl -F "url=https://your-domain.com/quarter_tg/index.php" \
+     -F "secret_token=your-secret-key" \
+     https://api.telegram.org/bot<YOUR_BOT_TOKEN>/setWebhook
+```
+> Replace `<YOUR_BOT_TOKEN>` with your actual bot token.
+
+### 6. Set Permissions
+Ensure the `cache/` and `logs/` directories are writable:
+```bash
+chmod 755 cache logs
+```
+
+### 7. Test the Bot
+Send `/help` to your bot in a group. It should respond with the available commands.
 
 ---
 
-## 🔗 Webhook Setup
+## ⚙️ Configuration
 
-Point Telegram to your bot’s `index.php` file. Make sure the URL is publicly accessible.
+The main configuration file is `config/config.php`. Below are the key options:
 
-**Set the webhook:**
-```
-https://api.telegram.org/bot<YOUR_BOT_TOKEN>/setWebhook?url=https://your-domain.com/path/to/quarter_tg/index.php
-```
+| Key                | Description                                                                 |
+|--------------------|-----------------------------------------------------------------------------|
+| `bot_token`        | Your Telegram bot token from @BotFather.                                   |
+| `database`         | MySQL connection settings (host, name, user, password, charset).           |
+| `webhook.url`      | Public URL where your bot is hosted (e.g., `https://example.com/index.php`). |
+| `webhook.secret`   | Optional secret token for verifying incoming webhook requests.             |
+| `cache.enabled`    | Enable/disable file‑based caching.                                        |
+| `cache.ttl`        | Cache lifetime in seconds (default 300).                                  |
+| `logging.enabled`  | Whether to log bot activity to `logs/bot.log`.                            |
+| `owner_id`         | Your Telegram user ID (super admin).                                      |
+| `default_language` | Default reply language (`fa` or `en`).                                   |
+| `command_map`      | Associates command strings (English & Persian) to module classes.         |
 
-**For extra security (using webhook secret):**
-```
-https://api.telegram.org/bot<YOUR_BOT_TOKEN>/setWebhook?url=https://your-domain.com/path/to/quarter_tg/index.php?secret=your_random_secret_string
-```
-
-**Verify the webhook:**
-```
-https://api.telegram.org/bot<YOUR_BOT_TOKEN>/getWebhookInfo
-```
-
-> 💡 If you're testing locally, you can use [ngrok](https://ngrok.com/) to expose your local server.
+> **Important**: Never commit `config.php` with real credentials to a public repository!
 
 ---
 
-## 📖 Commands Reference
+## 📝 Commands
 
-### 🇬🇧 English Commands
+Below is the complete list of commands. All commands also work in Persian (as shown in the table).
 
-| Command | Description |
-|---------|-------------|
-| `/help` | Show full help (admins only) |
-| `/addadmin` @user | Add a new admin |
-| `/remadmin` @user | Remove an admin |
-| `/listadmin` | List all admins |
-| `/ban` @user | Ban a user |
-| `/unban` @user | Unban a user |
-| `/listbans` | List banned users |
-| `/mute` @user | Mute a user (deletes last 50 messages) |
-| `/unmute` @user | Unmute a user |
-| `/warning` @user | Give a warning (auto‑ban after 3) |
-| `/remwarning` @user | Remove all warnings for a user |
-| `/pin` (reply) | Pin a message |
-| `/rempin` | Unpin a message |
-| `/del` (reply) | Delete a message |
-| `/clear` | Clear last 5000 messages (24h cooldown) |
-| `/id` | Get user ID |
-| `/lockmsg` / `/dislockmsg` | Lock / Unlock text messages |
-| `/lockpic` / `/dislockpic` | Lock / Unlock photos |
-| `/lockfilm` / `/dislockfilm` | Lock / Unlock videos |
-| `/lockgif` / `/dislockgif` | Lock / Unlock GIFs |
-| `/locksticker` / `/dislocksticker` | Lock / Unlock stickers |
-| `/lockvoice` / `/remlockvoice` | Lock / Unlock voice messages |
-| `/lockvm` / `/remlockvm` | Lock / Unlock video notes |
-| `/sayhello` / `/remsayhello` | Enable / Disable welcome message |
+### Administration
 
-### 🇮🇷 Persian Commands (same functionality)
+| Command (English)      | Command (Persian)      | Description                        |
+|------------------------|------------------------|------------------------------------|
+| `/addadmin @user`      | `ست ادمین @user`       | Add a user as group admin.         |
+| `/remadmin @user`      | `حذف ادمین @user`      | Remove a user from admin list.     |
+| `/listadmin`           | `لیست ادمین‌ها`        | List all group admins.             |
 
-| Command | Description |
-|---------|-------------|
-| `راهنما` | Show full help (admins only) |
-| `ست ادمین` @user | Add admin |
-| `حذف ادمین` @user | Remove admin |
-| `لیست ادمین‌ها` | List admins |
-| `بن` @user | Ban |
-| `آن‌بن` @user | Unban |
-| `لیست بن‌ها` | List bans |
-| `سکوت` @user | Mute |
-| `حذف سکوت` @user | Unmute |
-| `اخطار` @user | Give warning |
-| `حذف اخطار` @user | Remove warnings |
-| `پین` (reply) | Pin |
-| `حذف پین` | Unpin |
-| `حذف` (reply) | Delete |
-| `پاکسازی` | Clear |
-| `آیدی` | Get ID |
-| `قفل پیام` / `رفع قفل پیام` | Lock / Unlock text |
-| `قفل عکس` / `رفع قفل عکس` | Lock / Unlock photos |
-| `قفل فیلم` / `رفع قفل فیلم` | Lock / Unlock videos |
-| `قفل گیف` / `رفع قفل گیف` | Lock / Unlock GIFs |
-| `قفل استیکر` / `رفع قفل استیکر` | Lock / Unlock stickers |
-| `قفل ویس` / `رفع قفل ویس` | Lock / Unlock voice |
-| `قفل ویدئو مسیج` / `رفع قفل ویدئو مسیج` | Lock / Unlock video notes |
-| `خوش آمد بگو` / `خوش آمد نگو` | Enable / Disable welcome |
+### User Moderation
+
+| Command (English)      | Command (Persian)      | Description                                  |
+|------------------------|------------------------|----------------------------------------------|
+| `/ban @user`           | `بن @user`             | Ban a user from the group.                   |
+| `/unban @user`         | `آن‌بن @user`          | Unban a user.                                |
+| `/listbans`            | `لیست بن‌ها`           | List all banned users.                       |
+| `/mute @user`          | `سکوت @user`           | Mute a user (deletes their last 50 messages).|
+| `/unmute @user`        | `حذف سکوت @user`       | Unmute a user.                               |
+| `/warning @user`       | `اخطار @user`          | Give a warning (auto‑ban after 3 warnings). |
+| `/remwarning @user`    | `حذف اخطار @user`      | Clear all warnings for a user.               |
+
+### Message Management
+
+| Command (English)      | Command (Persian)      | Description                                        |
+|------------------------|------------------------|----------------------------------------------------|
+| `/pin` (reply)         | `پین`                  | Pin the replied message.                           |
+| `/rempin`              | `حذف پین`              | Unpin the current pinned message.                  |
+| `/del` (reply)         | `حذف`                  | Delete the replied message.                        |
+| `/clear`               | `پاکسازی`              | Delete last 5000 messages (24‑hour cooldown).      |
+| `/id` (reply or none)  | `آیدی`                 | Get the ID of a user or the group.                 |
+
+### Content Locks
+
+| Command (English)      | Command (Persian)      | Description                                        |
+|------------------------|------------------------|----------------------------------------------------|
+| `/lockmsg` / `/dislockmsg` | `قفل پیام` / `رفع قفل پیام` | Lock/unlock text messages.                  |
+| `/lockpic` / `/dislockpic` | `قفل عکس` / `رفع قفل عکس` | Lock/unlock photos.                         |
+| `/lockfilm` / `/dislockfilm` | `قفل فیلم` / `رفع قفل فیلم` | Lock/unlock videos.                        |
+| `/lockgif` / `/dislockgif` | `قفل گیف` / `رفع قفل گیف` | Lock/unlock GIFs.                           |
+| `/locksticker` / `/dislocksticker` | `قفل استیکر` / `رفع قفل استیکر` | Lock/unlock stickers.              |
+| `/lockvoice` / `/remlockvoice` | `قفل ویس` / `رفع قفل ویس` | Lock/unlock voice messages.               |
+| `/lockvm` / `/remlockvm` | `قفل ویدئو مسیج` / `رفع قفل ویدئو مسیج` | Lock/unlock video notes. |
+| **`/locklink` / `/remlocklink`** | **`قفل لینک` / `رفع قفل لینک`** | **Lock/unlock links in messages.** |
+| **`/locktag` / `/remlocktag`**   | **`قفل تگ` / `رفع قفل تگ`**     | **Lock/unlock mentions (@username).** |
+
+### Other
+
+| Command (English)      | Command (Persian)      | Description                                        |
+|------------------------|------------------------|----------------------------------------------------|
+| `/sayhello` / `/remsayhello` | `خوش آمد بگو` / `خوش آمد نگو` | Enable/disable welcome messages.         |
+| `/help`                | `راهنما`               | Show this help message.                            |
 
 ---
 
@@ -213,50 +211,39 @@ https://api.telegram.org/bot<YOUR_BOT_TOKEN>/getWebhookInfo
 ```
 quarter_tg/
 ├── config/
-│   └── config.php              # Main configuration (DB, token, command map)
+│   └── config.php              # Main configuration file
 ├── src/
 │   ├── Core/                   # Core engine
 │   │   ├── Bot.php             # Main orchestrator
-│   │   ├── MuteManager.php     # Mute/Unmute logic
-│   │   ├── WarningManager.php  # Warning/Auto‑ban logic
-│   │   ├── AuthorizationManager.php
-│   │   ├── AdminManager.php
-│   │   ├── WelcomeManager.php
-│   │   ├── LockManager.php
-│   │   ├── MessageLogger.php
-│   │   ├── CommandLogger.php
-│   │   ├── ModuleManager.php   # Module loader
-│   │   ├── RequestHandler.php
-│   │   ├── Database.php        # MySQL wrapper
-│   │   ├── Cache.php           # File‑based cache
+│   │   ├── ModuleManager.php   # Dynamic module loader
+│   │   ├── LockManager.php     # Content lock logic
+│   │   ├── MuteManager.php     # Mute/unmute logic
+│   │   ├── WarningManager.php  # Warning/auto‑ban logic
+│   │   ├── AuthorizationManager.php  # RBAC
+│   │   ├── AdminManager.php    # Admin CRUD
+│   │   ├── WelcomeManager.php  # Welcome messages
+│   │   ├── MessageLogger.php   # Message logging
+│   │   ├── CommandLogger.php   # Command auditing
+│   │   ├── Database.php        # MySQL wrapper (PDO)
+│   │   ├── Cache.php           # File‑based caching
 │   │   └── Logger.php          # Logging system
 │   ├── Modules/                # All command modules
 │   │   ├── HelpModule.php
 │   │   ├── MuteModule.php
-│   │   ├── UnmuteModule.php
-│   │   ├── WarningModule.php
-│   │   ├── RemoveWarningModule.php
-│   │   ├── AddAdminModule.php
-│   │   ├── RemoveAdminModule.php
-│   │   ├── ListAdminsModule.php
 │   │   ├── BanModule.php
-│   │   ├── UnbanModule.php
-│   │   ├── ListBansModule.php
-│   │   ├── PinModule.php
-│   │   ├── UnpinModule.php
-│   │   ├── DeleteModule.php
-│   │   ├── ClearModule.php
-│   │   ├── GetIdModule.php
-│   │   ├── Lock*Module.php     # All lock/unlock modules
-│   │   └── ...
-│   ├── Helpers/                # API wrappers & utilities
-│   │   ├── TelegramApi.php
-│   │   └── LanguageHelper.php
-│   └── Exceptions/
+│   │   ├── LockLinkModule.php  # NEW
+│   │   ├── RemLockLinkModule.php # NEW
+│   │   ├── LockTagModule.php   # NEW
+│   │   ├── RemLockTagModule.php # NEW
+│   │   └── ...                 # (other modules)
+│   ├── Helpers/                # API wrappers and utilities
+│   │   ├── TelegramApi.php     # Telegram Bot API wrapper
+│   │   └── LanguageHelper.php  # Bilingual support
+│   └── Exceptions/             # Custom exceptions
 │       └── ModuleNotFoundException.php
 ├── logs/                       # Log files (writable)
 ├── cache/                      # Cache files (writable)
-├── bootstrap.php               # Initialization & dependency injection
+├── bootstrap.php               # Dependency injection & init
 ├── index.php                   # Webhook entry point
 ├── db.sql                      # Complete database schema
 ├── .htaccess                   # Security rules
@@ -266,134 +253,42 @@ quarter_tg/
 
 ---
 
-## 🛠️ Extending the Bot
-
-### Adding a New Command
-1. Create a new PHP class in `src/Modules/` (e.g., `MyCommandModule.php`).
-2. Implement an `execute($message, $params)` method.
-3. Register it in `config/config.php` under the `command_map` array.
-
-**Example:**
-```php
-<?php
-namespace Modules;
-
-class MyCommandModule
-{
-    private $telegram;
-    private $db;
-    private $logger;
-
-    public function __construct($telegram, $db, $logger)
-    {
-        $this->telegram = $telegram;
-        $this->db = $db;
-        $this->logger = $logger;
-    }
-
-    public function execute($message, $params)
-    {
-        $chat_id = $message['chat']['id'];
-        $this->telegram->sendMessage($chat_id, "Hello! This is my custom command.");
-    }
-}
-```
-
-**Register in `config/config.php`:**
-```php
-'command_map' => [
-    // ...
-    'mycommand' => 'MyCommandModule',
-    'دستورمن'   => 'MyCommandModule',
-],
-```
-
----
-
-## 📊 Logging & Caching
-
-### Logging
-- **Message Logs** – stored in `bot_messages` table (all messages)
-- **Command Logs** – stored in `bot_command_logs` table (admin actions)
-- **File Logs** – written to `logs/bot.log` for debugging
-
-### Caching
-- **File‑Based Cache** – stored in `cache/` directory
-- Reduces database queries for frequently accessed settings (welcome messages, locks, etc.)
-- Cache TTL: 300 seconds (configurable)
-
----
-
 ## 🔒 Security
 
-- **Webhook Secret** – optional but recommended to verify incoming requests
-- **Role‑Based Access** – only owners, admins, and sub‑admins can execute privileged commands
-- **Prevention of Self‑Moderation** – admins cannot mute, warn, or ban other admins
-- **Rate Limiting** – `clear` command has a 24‑hour cooldown
-- **SQL Injection Protection** – all queries use prepared statements
-- **HTTPS Recommended** – always use HTTPS for webhook endpoints
+- **Webhook Secret**: Configure a secret token to verify incoming requests (prevents spoofing).
+- **SQL Injection Prevention**: All queries use prepared statements.
+- **Role‑Based Access**: Owner, Group Admin, and Sub‑Admin levels; admins cannot act on other admins.
+- **Rate Limiting**: `/clear` has a 24‑hour cooldown per group.
+- **Self‑Protection**: The bot cannot be muted, banned, or warned by anyone (including owners) to avoid accidental lockout.
+- **HTTPS Required**: Always host your webhook endpoint over HTTPS.
 
 ---
 
 ## 🤝 Contributing
 
-Contributions are welcome! Whether it's a bug fix, new feature, or documentation improvement:
+Contributions are welcome! Please follow these steps:
 
-1. Fork the repository.
-2. Create a new branch (`git checkout -b feature/your-feature`).
-3. Commit your changes (`git commit -am 'Add some feature'`).
-4. Push to the branch (`git push origin feature/your-feature`).
-5. Open a Pull Request.
+1. **Fork** the repository.
+2. **Create a feature branch** (`git checkout -b feature/amazing-feature`).
+3. **Commit your changes** using [Conventional Commits](https://www.conventionalcommits.org/).
+4. **Push** to your branch (`git push origin feature/amazing-feature`).
+5. **Open a Pull Request** with a clear description of your changes.
 
-**Guidelines:**
-- Follow PSR-12 coding standards.
-- Write clear, commented code.
-- Update the README if you add new features.
-- Test your changes before submitting.
-
-**Report issues here:**  
-👉 [GitHub Issues](https://github.com/parhampa/quarter_tg/issues)
-
----
-
-## 📬 Contact
-
-- **GitHub**: [parhampa](https://github.com/parhampa)
-- **Telegram**: [@parhamtrojan](https://t.me/parhamtrojan)
-- **Issues**: [GitHub Issues](https://github.com/parhampa/quarter_tg/issues)
-
-Feel free to reach out for support, feature requests, or collaboration!
+Please ensure your code follows the PSR‑12 coding standard and includes appropriate comments.
 
 ---
 
 ## 📄 License
 
-This project is open‑source and available under the **MIT License**.
-
-Copyright (c) 2025 Parham PA
-
-Permission is hereby granted, free of charge, to any person obtaining a copy
-of this software and associated documentation files (the "Software"), to deal
-in the Software without restriction, including without limitation the rights
-to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-copies of the Software, and to permit persons to whom the Software is
-furnished to do so, subject to the following conditions:
-
-The above copyright notice and this permission notice shall be included in all
-copies or substantial portions of the Software.
-
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-SOFTWARE.
+This project is licensed under the **MIT License** – see the [LICENSE](LICENSE) file for details.
 
 ---
 
-**Thank you for using Quarter TG! 🚀**  
-_Keep your groups safe, organized, and fun._
-```
+## 💬 Support
+
+- **Issues**: Please report bugs or suggest features via [GitHub Issues](https://github.com/parhampa/quarter_tg/issues).
+- **Telegram**: Contact the maintainer [@parhampa](https://t.me/parhampa) for direct inquiries.
 
 ---
+
+**Made with ❤️ by Parham PA and contributors.**
