@@ -156,12 +156,20 @@ return [
         'رفع قفل ویدئو مسیج' => 'RemLockVideoNoteModule',
 
         // ========================
-        // قفل/رفع قفل لینک (جدید)
+        // قفل/رفع قفل لینک
         // ========================
         '/locklink'    => 'LockLinkModule',
         'قفل لینک'     => 'LockLinkModule',
         '/remlocklink' => 'RemLockLinkModule',
         'رفع قفل لینک'  => 'RemLockLinkModule',
+
+        // ========================
+        // قفل/رفع قفل تگ (جدید)
+        // ========================
+        '/locktag'     => 'LockTagModule',
+        'قفل تگ'       => 'LockTagModule',
+        '/remlocktag'  => 'RemLockTagModule',
+        'رفع قفل تگ'   => 'RemLockTagModule',
 
         // ========================
         // سایر

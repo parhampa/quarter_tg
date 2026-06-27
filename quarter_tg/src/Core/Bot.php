@@ -132,10 +132,18 @@ class Bot
             $locked = true;
         }
 
-        // ✅ قفل لینک (جدید)
+        // قفل لینک
         if (!$locked && isset($message['text']) && $this->lockManager->isLocked($chatId, 'link')) {
             $text = $message['text'] ?? '';
             if ($this->containsLink($text)) {
+                $locked = true;
+            }
+        }
+
+        // ✅ قفل تگ (جدید)
+        if (!$locked && isset($message['text']) && $this->lockManager->isLocked($chatId, 'tag')) {
+            $text = $message['text'] ?? '';
+            if ($this->containsTag($text)) {
                 $locked = true;
             }
         }
@@ -166,6 +174,19 @@ class Bot
             return false;
         }
         $pattern = '/(https?:\/\/[^\s]+|t\.me\/[^\s]+|telegram\.me\/[^\s]+)/i';
+        return preg_match($pattern, $text) === 1;
+    }
+
+    /**
+     * بررسی وجود تگ (منشن) در متن
+     */
+    private function containsTag($text)
+    {
+        if (empty($text)) {
+            return false;
+        }
+        // الگوی تشخیص تگ: @username (با حروف، اعداد و زیرخط)
+        $pattern = '/@[a-zA-Z0-9_]{5,32}/';
         return preg_match($pattern, $text) === 1;
     }
 

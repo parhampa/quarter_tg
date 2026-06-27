@@ -75,7 +75,8 @@ CREATE TABLE `bot_group_locks` (
   `lock_sticker` tinyint(1) NOT NULL DEFAULT '0',
   `lock_voice` tinyint(1) NOT NULL DEFAULT '0',
   `lock_video_note` tinyint(1) NOT NULL DEFAULT '0',
-  `lock_link` tinyint(1) NOT NULL DEFAULT '0'   -- ✅ ستون جدید برای قفل لینک
+  `lock_link` tinyint(1) NOT NULL DEFAULT '0',   -- ✅ قفل لینک
+  `lock_tag` tinyint(1) NOT NULL DEFAULT '0'     -- ✅ قفل تگ (جدید)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 -- --------------------------------------------------------
