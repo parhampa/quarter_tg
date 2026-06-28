@@ -14,77 +14,128 @@ define('CACHE_DIR', ROOT_DIR . '/cache');
 // بارگذاری تنظیمات
 $config = require CONFIG_DIR . '/config.php';
 
-// کلاس‌های اتولود (ساده)
+// ============================================================
+// اتولودر PSR-4 ساده
+// ============================================================
 spl_autoload_register(function ($class) {
-    $prefix = 'Core\\';
-    $base_dir = SRC_DIR . '/Core/';
-    if (strpos($class, $prefix) === 0) {
-        $relative_class = substr($class, strlen($prefix));
-        $file = $base_dir . str_replace('\\', '/', $relative_class) . '.php';
-        if (file_exists($file)) require $file;
-        return;
-    }
-    $prefix = 'Modules\\';
-    $base_dir = SRC_DIR . '/Modules/';
-    if (strpos($class, $prefix) === 0) {
-        $relative_class = substr($class, strlen($prefix));
-        $file = $base_dir . str_replace('\\', '/', $relative_class) . '.php';
-        if (file_exists($file)) require $file;
-        return;
-    }
-    $prefix = 'Helpers\\';
-    $base_dir = SRC_DIR . '/Helpers/';
-    if (strpos($class, $prefix) === 0) {
-        $relative_class = substr($class, strlen($prefix));
-        $file = $base_dir . str_replace('\\', '/', $relative_class) . '.php';
-        if (file_exists($file)) require $file;
-        return;
+    // Namespace های پروژه
+    $prefixes = [
+        'QuarterTg\\Core\\'    => SRC_DIR . '/Core/',
+        'QuarterTg\\Helpers\\' => SRC_DIR . '/Helpers/',
+        'Modules\\'            => SRC_DIR . '/Modules/',
+    ];
+
+    foreach ($prefixes as $prefix => $base_dir) {
+        if (strpos($class, $prefix) === 0) {
+            $relative_class = substr($class, strlen($prefix));
+            $file = $base_dir . str_replace('\\', '/', $relative_class) . '.php';
+            if (file_exists($file)) {
+                require $file;
+                return;
+            }
+        }
     }
 });
 
-// ایجاد وابستگی‌ها
-$db = new Core\Database($config['db']);
-$telegram = new Helpers\TelegramApi($config['bot_token']);
-$logger = new Core\Logger(LOGS_DIR . '/bot.log');
+// ============================================================
+// ایجاد وابستگی‌های پایه
+// ============================================================
 
-// ==================== مدیران جدید ====================
-$muteManager = new Core\MuteManager($db, $telegram, $logger);
-$warningManager = new Core\WarningManager($db, $telegram, $logger);
+// دیتابیس
+$database = new QuarterTg\Core\Database($config['database']);
 
-// ==================== ModuleManager ====================
-$moduleManager = new Core\ModuleManager($config['command_map']);
-
-// ==================== ثبت ماژول‌ها با وابستگی‌ها ====================
-// ماژول‌های Help
-$moduleManager->registerModule('HelpModule', new Modules\HelpModule($telegram, $db, $logger));
-
-// ماژول‌های Mute
-$moduleManager->registerModule('MuteModule', new Modules\MuteModule($muteManager, $telegram, $db, $logger));
-$moduleManager->registerModule('UnmuteModule', new Modules\UnmuteModule($muteManager, $telegram, $db, $logger));
-
-// ماژول‌های Warning
-$moduleManager->registerModule('WarningModule', new Modules\WarningModule($warningManager, $telegram, $db, $logger));
-$moduleManager->registerModule('RemoveWarningModule', new Modules\RemoveWarningModule($warningManager, $telegram, $db, $logger));
-
-// در صورت وجود سایر ماژول‌ها، می‌توانید آن‌ها را نیز ثبت کنید
-// اما اگر ماژول‌ها وابستگی خاصی ندارند، از command_map استفاده می‌شود
-
-// ==================== ساخت ربات ====================
-$bot = new Core\Bot(
-    $db,
-    $telegram,
-    $logger,
-    $moduleManager,
-    $muteManager,
-    $warningManager,
-    $config
+// کش (فایل‌بنیاد)
+$cache = new QuarterTg\Core\Cache(
+    $config['cache']['path'],
+    $config['cache']['ttl']
 );
 
-// ==================== پردازش درخواست ====================
-$update = json_decode(file_get_contents('php://input'), true);
-if ($update) {
-    $bot->handleRequest($update);
+// لاگر
+$logger = new QuarterTg\Core\Logger(
+    $config['logging']['path'],
+    $config['logging']['enabled'] ?? true
+);
+
+// Telegram API
+$telegram = new QuarterTg\Helpers\TelegramApi($config['bot_token']);
+
+// ============================================================
+// ایجاد مدیران (Managers)
+// ============================================================
+
+// مدیریت قفل‌ها
+$lockManager = new QuarterTg\Core\LockManager($database, $cache);
+
+// مدیریت میوت
+$muteManager = new QuarterTg\Core\MuteManager($database, $cache);
+
+// مدیریت اخطارها
+$warningManager = new QuarterTg\Core\WarningManager($database, $cache);
+
+// مدیریت دسترسی‌ها (Authorization)
+$authorizationManager = new QuarterTg\Core\AuthorizationManager(
+    $database,
+    $cache,
+    $config['owner_id']
+);
+
+// مدیریت ادمین‌ها
+$adminManager = new QuarterTg\Core\AdminManager($database, $cache);
+
+// مدیریت پیام خوش‌آمدگویی
+$welcomeManager = new QuarterTg\Core\WelcomeManager($database, $cache);
+
+// لاگ پیام‌ها
+$messageLogger = new QuarterTg\Core\MessageLogger($database);
+
+// لاگ دستورات
+$commandLogger = new QuarterTg\Core\CommandLogger($database);
+
+// ============================================================
+// ModuleManager
+// ============================================================
+
+$moduleManager = new QuarterTg\Core\ModuleManager(
+    $config['command_map'],
+    $telegram,
+    $lockManager,
+    $muteManager,
+    $warningManager,
+    $authorizationManager,
+    $adminManager,
+    $welcomeManager,
+    $messageLogger,
+    $commandLogger,
+    $database,
+    $cache,
+    $logger
+);
+
+// ============================================================
+// ساخت ربات اصلی
+// ============================================================
+
+$bot = new QuarterTg\Core\Bot(
+    $config,
+    $database,
+    $cache,
+    $logger
+);
+
+// ============================================================
+// پردازش درخواست Webhook
+// ============================================================
+
+$input = file_get_contents('php://input');
+if ($input) {
+    $update = json_decode($input, true);
+    if ($update) {
+        $bot->handleRequest($update);
+    } else {
+        http_response_code(400);
+        echo 'Invalid JSON';
+    }
 } else {
     http_response_code(400);
-    echo 'Invalid request';
+    echo 'No input received';
 }

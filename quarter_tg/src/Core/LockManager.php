@@ -1,5 +1,9 @@
 <?php
+
 namespace Core;
+
+use Core\Database;
+use Core\Cache;
 
 class LockManager
 {
@@ -12,48 +16,71 @@ class LockManager
         $this->cache = $cache;
     }
 
-    private function getLocks(int $groupId): array
+    /**
+     * وضعیت هر نوع قفل را برای یک گروه برمی‌گرداند
+     */
+    private function isLocked($group_id, $type)
     {
-        $cacheKey = "locks_{$groupId}";
-        $cached = $this->cache->get($cacheKey);
+        $cache_key = "lock_{$group_id}_{$type}";
+        $cached = $this->cache->get($cache_key);
         if ($cached !== null) {
-            return $cached;
+            return (bool) $cached;
         }
 
-        $sql = "SELECT * FROM bot_group_locks WHERE group_id = {$groupId}";
-        $row = $this->db->fetchOne($sql);
-        if (!$row) {
-            $default = [
-                'group_id' => $groupId,
-                'lock_messages' => 0,
-                'lock_stickers' => 0,
-                'lock_photos' => 0,
-                'lock_videos' => 0,
-                'lock_gifs' => 0,
-                'lock_voice' => 0,          // NEW
-                'lock_video_notes' => 0,    // NEW
-            ];
-            $this->cache->set($cacheKey, $default);
-            return $default;
-        }
-        $this->cache->set($cacheKey, $row);
-        return $row;
+        $stmt = $this->db->prepare("SELECT status FROM locks WHERE group_id = ? AND type = ?");
+        $stmt->execute([$group_id, $type]);
+        $row = $stmt->fetch();
+        $status = $row ? (bool) $row['status'] : false;
+
+        $this->cache->set($cache_key, $status);
+        return $status;
     }
 
-    public function isLocked(int $groupId, string $type): bool
+    /**
+     * تغییر وضعیت یک قفل
+     */
+    private function setLock($group_id, $type, $status)
     {
-        $locks = $this->getLocks($groupId);
-        $field = 'lock_' . $type;
-        return isset($locks[$field]) && (int)$locks[$field] === 1;
+        $this->db->prepare("
+            INSERT INTO locks (group_id, type, status, updated_at)
+            VALUES (?, ?, ?, NOW())
+            ON DUPLICATE KEY UPDATE status = ?, updated_at = NOW()
+        ")->execute([$group_id, $type, $status, $status]);
+
+        $this->cache->delete("lock_{$group_id}_{$type}");
+        return true;
     }
 
-    public function setLock(int $groupId, string $type, bool $enabled): void
-    {
-        $field = 'lock_' . $type;
-        $value = $enabled ? 1 : 0;
-        $sql = "INSERT INTO bot_group_locks (group_id, {$field}) VALUES ({$groupId}, {$value})
-                ON DUPLICATE KEY UPDATE {$field} = {$value}, updated_at = CURRENT_TIMESTAMP";
-        $this->db->execute($sql);
-        $this->cache->delete("locks_{$groupId}");
-    }
+    // --- متدهای عمومی برای هر نوع قفل ---
+
+    public function isMsgLocked($group_id)     { return $this->isLocked($group_id, 'msg'); }
+    public function toggleMsgLock($group_id, $status) { return $this->setLock($group_id, 'msg', $status); }
+
+    public function isPicLocked($group_id)     { return $this->isLocked($group_id, 'pic'); }
+    public function togglePicLock($group_id, $status) { return $this->setLock($group_id, 'pic', $status); }
+
+    public function isFilmLocked($group_id)    { return $this->isLocked($group_id, 'film'); }
+    public function toggleFilmLock($group_id, $status) { return $this->setLock($group_id, 'film', $status); }
+
+    public function isGifLocked($group_id)     { return $this->isLocked($group_id, 'gif'); }
+    public function toggleGifLock($group_id, $status) { return $this->setLock($group_id, 'gif', $status); }
+
+    public function isStickerLocked($group_id) { return $this->isLocked($group_id, 'sticker'); }
+    public function toggleStickerLock($group_id, $status) { return $this->setLock($group_id, 'sticker', $status); }
+
+    public function isVoiceLocked($group_id)   { return $this->isLocked($group_id, 'voice'); }
+    public function toggleVoiceLock($group_id, $status) { return $this->setLock($group_id, 'voice', $status); }
+
+    public function isVmLocked($group_id)      { return $this->isLocked($group_id, 'vm'); }
+    public function toggleVmLock($group_id, $status) { return $this->setLock($group_id, 'vm', $status); }
+
+    public function isLinkLocked($group_id)    { return $this->isLocked($group_id, 'link'); }
+    public function toggleLinkLock($group_id, $status) { return $this->setLock($group_id, 'link', $status); }
+
+    public function isTagLocked($group_id)     { return $this->isLocked($group_id, 'tag'); }
+    public function toggleTagLock($group_id, $status) { return $this->setLock($group_id, 'tag', $status); }
+
+    // === متدهای جدید برای هشتگ ===
+    public function isHashtagLocked($group_id) { return $this->isLocked($group_id, 'hashtag'); }
+    public function toggleHashtagLock($group_id, $status) { return $this->setLock($group_id, 'hashtag', $status); }
 }

@@ -28,7 +28,7 @@ return [
     */
     'webhook' => [
         'url'    => 'https://your-domain.com/quarter_tg/index.php',
-        'secret' => 'your-secret-key-here', // Optional but recommended
+        'secret' => 'your-secret-key-here',
     ],
 
     /*
@@ -50,7 +50,7 @@ return [
     'logging' => [
         'enabled' => true,
         'path'    => __DIR__ . '/../logs/bot.log',
-        'level'   => 'info', // debug, info, error
+        'level'   => 'info',
     ],
 
     /*
@@ -58,14 +58,14 @@ return [
     | Owner ID (Super Admin)
     |--------------------------------------------------------------------------
     */
-    'owner_id' => 123456789, // Your Telegram user ID
+    'owner_id' => 123456789,
 
     /*
     |--------------------------------------------------------------------------
     | Default Language
     |--------------------------------------------------------------------------
     */
-    'default_language' => 'fa', // fa or en
+    'default_language' => 'fa',
 
     /*
     |--------------------------------------------------------------------------
@@ -164,12 +164,20 @@ return [
         'رفع قفل لینک'  => 'RemLockLinkModule',
 
         // ========================
-        // قفل/رفع قفل تگ (جدید)
+        // قفل/رفع قفل تگ
         // ========================
         '/locktag'     => 'LockTagModule',
         'قفل تگ'       => 'LockTagModule',
         '/remlocktag'  => 'RemLockTagModule',
         'رفع قفل تگ'   => 'RemLockTagModule',
+
+        // ========================
+        // قفل/رفع قفل هشتگ (جدید)
+        // ========================
+        '/lockhashtag' => 'LockHashtagModule',
+        'قفل هشتگ'     => 'LockHashtagModule',
+        '/remlockhashtag' => 'RemLockHashtagModule',
+        'رفع قفل هشتگ'  => 'RemLockHashtagModule',
 
         // ========================
         // سایر

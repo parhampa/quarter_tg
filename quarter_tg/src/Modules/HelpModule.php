@@ -67,7 +67,10 @@ class HelpModule
             . "`قفل گیف` / `رفع قفل گیف` - قفل/رفع قفل GIF\n"
             . "`قفل استیکر` / `رفع قفل استیکر` - قفل/رفع قفل استیکر\n"
             . "`قفل ویس` / `رفع قفل ویس` - قفل/رفع قفل ویس\n"
-            . "`قفل ویدئو مسیج` / `رفع قفل ویدئو مسیج` - قفل/رفع قفل ویدئو مسیج\n\n"
+            . "`قفل ویدئو مسیج` / `رفع قفل ویدئو مسیج` - قفل/رفع قفل ویدئو مسیج\n"
+            . "`قفل لینک` / `رفع قفل لینک` - قفل/رفع قفل لینک\n"
+            . "`قفل تگ` / `رفع قفل تگ` - قفل/رفع قفل تگ (منشن)\n"
+            . "⭐️ `قفل هشتگ` / `رفع قفل هشتگ` - قفل/رفع قفل هشتگ (جدید)\n\n"
             . "🔹 **سایر**\n"
             . "`خوش آمد بگو` / `خوش آمد نگو` - فعال/غیرفعال‌سازی پیام خوش‌آمدگویی\n"
             . "`راهنما` / `help` - نمایش این راهنما";
@@ -101,7 +104,10 @@ class HelpModule
             . "`/lockgif` / `/dislockgif` - Lock/Unlock GIFs\n"
             . "`/locksticker` / `/dislocksticker` - Lock/Unlock stickers\n"
             . "`/lockvoice` / `/remlockvoice` - Lock/Unlock voice messages\n"
-            . "`/lockvm` / `/remlockvm` - Lock/Unlock video notes\n\n"
+            . "`/lockvm` / `/remlockvm` - Lock/Unlock video notes\n"
+            . "`/locklink` / `/remlocklink` - Lock/Unlock links\n"
+            . "`/locktag` / `/remlocktag` - Lock/Unlock tags (mentions)\n"
+            . "⭐️ `/lockhashtag` / `/remlockhashtag` - Lock/Unlock hashtags (new)\n\n"
             . "🔹 **Other**\n"
             . "`/sayhello` / `/remsayhello` - Enable/Disable welcome message\n"
             . "`/help` or `راهنما` - Show this help";

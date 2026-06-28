@@ -140,10 +140,18 @@ class Bot
             }
         }
 
-        // ✅ قفل تگ (جدید)
+        // قفل تگ
         if (!$locked && isset($message['text']) && $this->lockManager->isLocked($chatId, 'tag')) {
             $text = $message['text'] ?? '';
             if ($this->containsTag($text)) {
+                $locked = true;
+            }
+        }
+
+        // ✅ قفل هشتگ (جدید)
+        if (!$locked && isset($message['text']) && $this->lockManager->isLocked($chatId, 'hashtag')) {
+            $text = $message['text'] ?? '';
+            if ($this->containsHashtag($text)) {
                 $locked = true;
             }
         }
@@ -185,8 +193,22 @@ class Bot
         if (empty($text)) {
             return false;
         }
-        // الگوی تشخیص تگ: @username (با حروف، اعداد و زیرخط)
         $pattern = '/@[a-zA-Z0-9_]{5,32}/';
+        return preg_match($pattern, $text) === 1;
+    }
+
+    /**
+     * ✅ بررسی وجود هشتگ در متن (جدید)
+     * از حروف انگلیسی، فارسی و اعداد پشتیبانی می‌کند
+     */
+    private function containsHashtag($text)
+    {
+        if (empty($text)) {
+            return false;
+        }
+        // الگوی تشخیص هشتگ: # به همراه حروف (انگلیسی، فارسی، عربی) و اعداد و زیرخط
+        // \w = [a-zA-Z0-9_]  و \x{0600}-\x{06FF} = حروف فارسی/عربی
+        $pattern = '/#[\w\x{0600}-\x{06FF}]+/u';
         return preg_match($pattern, $text) === 1;
     }
 
