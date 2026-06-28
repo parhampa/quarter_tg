@@ -1,18 +1,21 @@
 <?php
 
-namespace QuarterTg\Modules;
+namespace Modules;
 
-use QuarterTg\Core\ModuleManager;
-
-class RemLockTagModule extends ModuleManager
+class RemLockTagModule extends BaseLockModule
 {
-    public function execute($message, $params)
+    protected function getLockType(): string
     {
-        $chatId = $message['chat']['id'];
-        $this->lockManager->setLock($chatId, 'tag', false);
-        $this->telegramApi->sendMessage(
-            $chatId,
-            "🔓 قفل تگ برداشته شد.\nکاربران می‌توانند تگ ارسال کنند."
-        );
+        return 'tag';
+    }
+
+    protected function getAction(): bool
+    {
+        return false;
+    }
+
+    public static function getDescription(): string
+    {
+        return "رفع قفل تگ (منشن) / Unlock tags (mentions)";
     }
 }

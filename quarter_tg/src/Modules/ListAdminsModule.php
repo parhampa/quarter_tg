@@ -1,66 +1,177 @@
 <?php
+
 namespace Modules;
 
-use Helpers\TelegramApi;
-use Helpers\LanguageHelper;
+use QuarterTg\Core\Database;
+use QuarterTg\Core\Logger;
+use QuarterTg\Helpers\TelegramApi;
+use QuarterTg\Core\AuthorizationManager;
+use QuarterTg\Core\AdminManager;
 
+/**
+ * ماژول نمایش لیست ادمین‌های گروه
+ * شامل مالک اصلی، ادمین‌های اصلی و ساب‌ادمین‌ها
+ * فقط ادمین‌ها می‌توانند لیست را مشاهده کنند
+ */
 class ListAdminsModule
 {
+    private $telegram;
+    private $db;
+    private $logger;
+    private $authManager;
     private $adminManager;
 
-    public function __construct()
-    {
-        global $adminManager;
+    public function __construct(
+        TelegramApi $telegram,
+        Database $db,
+        Logger $logger,
+        AuthorizationManager $authManager,
+        AdminManager $adminManager
+    ) {
+        $this->telegram = $telegram;
+        $this->db = $db;
+        $this->logger = $logger;
+        $this->authManager = $authManager;
         $this->adminManager = $adminManager;
     }
 
-    public function handle(array $update, array $args, TelegramApi $api, string $command): void
+    /**
+     * اجرای ماژول
+     */
+    public function execute(array $message, string $params = '', int $chatId = 0, int $userId = 0): void
     {
-        $message = $update['message'] ?? null;
-        if (!$message) return;
-
-        $chatId = $message['chat']['id'];
-        $msgId = $message['message_id'];
-        $chatType = $message['chat']['type'] ?? '';
-
-        $lang = LanguageHelper::getLanguageFromCommand($command);
-        if ($lang === 'en' && LanguageHelper::isPersianText($message['text'] ?? '')) {
-            $lang = 'fa';
+        if ($chatId === 0) {
+            $chatId = $message['chat']['id'] ?? 0;
+        }
+        if ($userId === 0) {
+            $userId = $message['from']['id'] ?? 0;
         }
 
-        $messages = [
-            'only_groups' => [
-                'en' => "❌ This command can only be used in groups.",
-                'fa' => "❌ این دستور فقط در گروه قابل اجراست.",
-            ],
-            'no_admins' => [
-                'en' => "📋 No admins registered for this group.",
-                'fa' => "📋 هیچ ادمینی برای این گروه ثبت نشده است.",
-            ],
-            'header' => [
-                'en' => "📋 <b>Admins for this group:</b>\n",
-                'fa' => "📋 <b>ادمین‌های این گروه:</b>\n",
-            ],
+        // فقط ادمین‌ها می‌توانند لیست را ببینند
+        if (!$this->authManager->isAdmin($chatId, $userId)) {
+            $this->telegram->sendMessage(
+                $chatId,
+                "⛔ شما اجازه دسترسی به لیست ادمین‌ها را ندارید.",
+                $message['message_id'] ?? null
+            );
+            return;
+        }
+
+        // دریافت لیست تمام مدیران
+        $admins = $this->adminManager->getAllAdmins($chatId, $this->authManager->getOwnerId());
+
+        if (empty($admins)) {
+            $this->telegram->sendMessage(
+                $chatId,
+                "📋 لیست ادمین‌ها خالی است.",
+                $message['message_id'] ?? null
+            );
+            return;
+        }
+
+        // ساخت متن لیست
+        $listText = $this->formatAdminList($admins);
+
+        $this->telegram->sendMessage(
+            $chatId,
+            $listText,
+            $message['message_id'] ?? null,
+            'HTML'
+        );
+
+        // لاگ
+        $this->logger->info("Admin list shown to user $userId in group $chatId");
+    }
+
+    /**
+     * فرمت کردن لیست ادمین‌ها
+     */
+    private function formatAdminList(array $admins): string
+    {
+        $text = "📋 <b>لیست ادمین‌های گروه</b>\n";
+        $text .= str_repeat('━', 30) . "\n\n";
+
+        $levels = [
+            'owner' => '👑 مالک',
+            'admin' => '🔹 ادمین اصلی',
+            'subadmin' => '🔸 ساب‌ادمین',
         ];
 
-        if ($chatType !== 'group' && $chatType !== 'supergroup') {
-            $api->sendMessage($chatId, $messages['only_groups'][$lang], $msgId);
-            return;
+        $levelIcons = [
+            'owner' => '👑',
+            'admin' => '🔹',
+            'subadmin' => '🔸',
+        ];
+
+        // دسته‌بندی بر اساس سطح
+        $grouped = [];
+        foreach ($admins as $admin) {
+            $level = $admin['level'] ?? 'user';
+            if (!isset($grouped[$level])) {
+                $grouped[$level] = [];
+            }
+            $grouped[$level][] = $admin;
         }
 
-        $admins = $this->adminManager->getAdminsByGroup($chatId);
-        if (empty($admins)) {
-            $api->sendMessage($chatId, $messages['no_admins'][$lang], $msgId);
-            return;
+        // نمایش به ترتیب: owner, admin, subadmin
+        $order = ['owner', 'admin', 'subadmin'];
+        foreach ($order as $level) {
+            if (!isset($grouped[$level]) || empty($grouped[$level])) {
+                continue;
+            }
+
+            $text .= "<b>{$levels[$level]}</b>\n";
+
+            foreach ($grouped[$level] as $admin) {
+                $username = $admin['username'] ?? '';
+                $firstName = $admin['first_name'] ?? '';
+                $lastName = $admin['last_name'] ?? '';
+                $userId = $admin['user_id'] ?? 0;
+
+                // ساخت نام نمایشی
+                $displayName = $firstName;
+                if (!empty($lastName)) {
+                    $displayName .= ' ' . $lastName;
+                }
+                if (empty($displayName)) {
+                    $displayName = $username ? '@' . $username : "کاربر ناشناس";
+                }
+
+                // ساخت لینک به کاربر
+                if (!empty($username)) {
+                    $userLink = '@' . $username;
+                } else {
+                    $userLink = "<a href=\"tg://user?id={$userId}\">{$displayName}</a>";
+                }
+
+                $addedBy = $admin['added_by'] ?? null;
+                $addedAt = $admin['added_at'] ?? null;
+
+                $text .= "  • {$levelIcons[$level]} {$userLink}";
+                
+                // نمایش آیدی به‌صورت کوچک
+                $text .= " <i>(ID: {$userId})</i>\n";
+
+                // نمایش اطلاعات اضافی (اختیاری)
+                if ($addedAt) {
+                    $date = date('Y/m/d H:i', strtotime($addedAt));
+                    $text .= "    📅 افزوده‌شده: {$date}\n";
+                }
+            }
+            $text .= "\n";
         }
 
-        $list = $messages['header'][$lang];
-        $count = 1;
-        foreach ($admins as $id) {
-            $list .= "{$count}. <code>{$id}</code>\n";
-            $count++;
-        }
+        $text .= str_repeat('━', 30) . "\n";
+        $text .= "📊 مجموع: <b>" . count($admins) . "</b> نفر";
 
-        $api->sendMessage($chatId, $list, $msgId);
+        return $text;
+    }
+
+    /**
+     * توضیحات ماژول
+     */
+    public static function getDescription(): string
+    {
+        return "نمایش لیست ادمین‌های گروه / Show group admins list";
     }
 }

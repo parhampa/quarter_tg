@@ -1,18 +1,21 @@
 <?php
 
-namespace QuarterTg\Modules;
+namespace Modules;
 
-use QuarterTg\Core\ModuleManager;
-
-class LockLinkModule extends ModuleManager
+class LockLinkModule extends BaseLockModule
 {
-    public function execute($message, $params)
+    protected function getLockType(): string
     {
-        $chatId = $message['chat']['id'];
-        $this->lockManager->setLock($chatId, 'link', true);
-        $this->telegramApi->sendMessage(
-            $chatId,
-            "🔒 قفل لینک فعال شد.\nکاربران عادی نمی‌توانند هیچ لینکی ارسال کنند."
-        );
+        return 'link';
+    }
+
+    protected function getAction(): bool
+    {
+        return true;
+    }
+
+    public static function getDescription(): string
+    {
+        return "قفل لینک / Lock links";
     }
 }

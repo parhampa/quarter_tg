@@ -2,81 +2,129 @@
 
 namespace Modules;
 
+use QuarterTg\Core\Database;
+use QuarterTg\Core\Logger;
+use QuarterTg\Helpers\TelegramApi;
+use QuarterTg\Core\AuthorizationManager;
+
+/**
+ * ماژول نمایش راهنمای ربات
+ * پشتیبانی از دو زبان فارسی و انگلیسی
+ * فقط ادمین‌ها می‌توانند راهنما را مشاهده کنند
+ */
 class HelpModule
 {
     private $telegram;
     private $db;
     private $logger;
+    private $authManager;
 
-    public function __construct($telegram, $db, $logger)
-    {
+    public function __construct(
+        TelegramApi $telegram,
+        Database $db,
+        Logger $logger,
+        AuthorizationManager $authManager
+    ) {
         $this->telegram = $telegram;
         $this->db = $db;
         $this->logger = $logger;
+        $this->authManager = $authManager;
     }
 
-    public function execute($message, $params)
+    /**
+     * اجرای ماژول
+     * @param array $message پیام دریافتی
+     * @param string $params پارامترهای دستور
+     * @param int $chatId آیدی گروه
+     * @param int $userId آیدی کاربر
+     */
+    public function execute(array $message, string $params = '', int $chatId = 0, int $userId = 0): void
     {
-        $chat_id = $message['chat']['id'];
-        $from_id = $message['from']['id'];
+        // اگر chatId و userId ارسال نشده باشند، از message استخراج می‌کنیم
+        if ($chatId === 0) {
+            $chatId = $message['chat']['id'] ?? 0;
+        }
+        if ($userId === 0) {
+            $userId = $message['from']['id'] ?? 0;
+        }
 
-        // فقط مدیران می‌توانند راهنما را ببینند
-        if (!$this->isGroupAdmin($chat_id, $from_id)) {
-            $this->telegram->sendMessage($chat_id, "⛔ شما اجازه دسترسی به راهنما را ندارید.\n⛔ You don't have permission to view help.");
+        // فقط ادمین‌ها می‌توانند راهنما را ببینند
+        if (!$this->authManager->isAdmin($chatId, $userId)) {
+            $this->telegram->sendMessage(
+                $chatId,
+                "⛔ شما اجازه دسترسی به راهنما را ندارید.\n⛔ You don't have permission to view help.",
+                $message['message_id'] ?? null
+            );
             return;
         }
 
+        // تشخیص زبان بر اساس متن دستور
         $text = $message['text'] ?? '';
-        // تشخیص زبان: اگر دستور با /help شروع شود یا شامل help باشد => انگلیسی
-        $is_english = (stripos($text, '/help') === 0 || stripos($text, 'help') !== false);
+        $isEnglish = (stripos($text, '/help') === 0 || stripos($text, 'help') !== false);
 
-        if ($is_english) {
-            $help_text = $this->getEnglishHelp();
+        if ($isEnglish) {
+            $helpText = $this->getEnglishHelp();
         } else {
-            $help_text = $this->getPersianHelp();
+            $helpText = $this->getPersianHelp();
         }
 
-        $this->telegram->sendMessage($chat_id, $help_text);
+        $this->telegram->sendMessage(
+            $chatId,
+            $helpText,
+            $message['message_id'] ?? null,
+            'Markdown'
+        );
+
+        // لاگ
+        $this->logger->info("Help shown to user $userId in group $chatId", [
+            'language' => $isEnglish ? 'english' : 'persian',
+        ]);
     }
 
-    private function getPersianHelp()
+    /**
+     * دریافت متن راهنما به فارسی
+     */
+    private function getPersianHelp(): string
     {
         return "📋 **راهنمای ربات مدیریت گروه**\n\n"
             . "🔹 **مدیریت ادمین‌ها**\n"
-            . "`ست ادمین` @username - افزودن ادمین جدید\n"
-            . "`حذف ادمین` @username - حذف ادمین\n"
-            . "`لیست ادمین‌ها` - نمایش لیست ادمین‌ها\n\n"
+            . "`/addadmin` @username - افزودن ادمین جدید\n"
+            . "`/remadmin` @username - حذف ادمین\n"
+            . "`/listadmin` - نمایش لیست ادمین‌ها\n\n"
             . "🔹 **مدیریت کاربران**\n"
-            . "`بن` @username - بن کردن کاربر\n"
-            . "`آن‌بن` @username - رفع بن کاربر\n"
-            . "`لیست بن‌ها` - نمایش لیست کاربران بن‌شده\n"
-            . "`سکوت` @username - ساکت کردن کاربر (فقط مدیران)\n"
-            . "`حذف سکوت` @username - برداشتن سکوت کاربر\n"
-            . "`اخطار` @username - ثبت اخطار (پس از ۳ اخطار بن خودکار)\n"
-            . "`حذف اخطار` @username - حذف تمام اخطارهای کاربر\n\n"
+            . "`/ban` @username - بن کردن کاربر\n"
+            . "`/unban` @username - رفع بن کاربر\n"
+            . "`/listbans` - نمایش لیست کاربران بن‌شده\n"
+            . "`/mute` @username - ساکت کردن کاربر (فقط مدیران)\n"
+            . "`/unmute` @username - برداشتن سکوت کاربر\n"
+            . "`/warning` @username - ثبت اخطار (پس از ۳ اخطار بن خودکار)\n"
+            . "`/remwarning` @username - حذف تمام اخطارهای کاربر\n\n"
             . "🔹 **مدیریت پیام‌ها**\n"
-            . "`پین` (ریپلای) - پین کردن پیام\n"
-            . "`حذف پین` - حذف پین\n"
-            . "`حذف` (ریپلای) - حذف یک پیام\n"
-            . "`پاکسازی` - پاکسازی ۵۰۰۰ پیام آخر\n"
-            . "`آیدی` - دریافت آیدی عددی کاربر\n\n"
+            . "`/pin` (ریپلای) - پین کردن پیام\n"
+            . "`/rempin` - حذف پین\n"
+            . "`/del` (ریپلای) - حذف یک پیام\n"
+            . "`/clear` - پاکسازی ۵۰۰۰ پیام آخر\n"
+            . "`/id` - دریافت آیدی عددی کاربر یا گروه\n\n"
             . "🔹 **قفل‌های محتوا**\n"
-            . "`قفل پیام` / `رفع قفل پیام` - قفل/رفع قفل متن\n"
-            . "`قفل عکس` / `رفع قفل عکس` - قفل/رفع قفل عکس\n"
-            . "`قفل فیلم` / `رفع قفل فیلم` - قفل/رفع قفل ویدیو\n"
-            . "`قفل گیف` / `رفع قفل گیف` - قفل/رفع قفل GIF\n"
-            . "`قفل استیکر` / `رفع قفل استیکر` - قفل/رفع قفل استیکر\n"
-            . "`قفل ویس` / `رفع قفل ویس` - قفل/رفع قفل ویس\n"
-            . "`قفل ویدئو مسیج` / `رفع قفل ویدئو مسیج` - قفل/رفع قفل ویدئو مسیج\n"
-            . "`قفل لینک` / `رفع قفل لینک` - قفل/رفع قفل لینک\n"
-            . "`قفل تگ` / `رفع قفل تگ` - قفل/رفع قفل تگ (منشن)\n"
-            . "⭐️ `قفل هشتگ` / `رفع قفل هشتگ` - قفل/رفع قفل هشتگ (جدید)\n\n"
+            . "`/lockmsg` / `/dislockmsg` - قفل/رفع قفل متن\n"
+            . "`/lockpic` / `/dislockpic` - قفل/رفع قفل عکس\n"
+            . "`/lockfilm` / `/dislockfilm` - قفل/رفع قفل ویدیو\n"
+            . "`/lockgif` / `/dislockgif` - قفل/رفع قفل GIF\n"
+            . "`/locksticker` / `/dislocksticker` - قفل/رفع قفل استیکر\n"
+            . "`/lockvoice` / `/remlockvoice` - قفل/رفع قفل ویس\n"
+            . "`/lockvm` / `/remlockvm` - قفل/رفع قفل ویدئو مسیج\n"
+            . "`/locklink` / `/remlocklink` - قفل/رفع قفل لینک\n"
+            . "`/locktag` / `/remlocktag` - قفل/رفع قفل تگ (منشن)\n"
+            . "⭐️ `/lockhashtag` / `/remlockhashtag` - قفل/رفع قفل هشتگ (جدید)\n\n"
             . "🔹 **سایر**\n"
-            . "`خوش آمد بگو` / `خوش آمد نگو` - فعال/غیرفعال‌سازی پیام خوش‌آمدگویی\n"
-            . "`راهنما` / `help` - نمایش این راهنما";
+            . "`/sayhello` / `/remsayhello` - فعال/غیرفعال‌سازی پیام خوش‌آمدگویی\n"
+            . "`/help` یا `راهنما` - نمایش این راهنما";
     }
 
-    private function getEnglishHelp()
+    /**
+     * دریافت متن راهنما به انگلیسی
+     */
+    private function getEnglishHelp(): string
     {
         return "📋 **Group Management Bot Help**\n\n"
             . "🔹 **Admin Management**\n"
@@ -113,19 +161,11 @@ class HelpModule
             . "`/help` or `راهنما` - Show this help";
     }
 
-    private function isGroupAdmin($group_id, $user_id)
+    /**
+     * توضیحات ماژول (برای استفاده در ModuleManager)
+     */
+    public static function getDescription(): string
     {
-        $stmt = $this->db->prepare("SELECT id FROM bot_admins WHERE group_id = ? AND user_id = ?");
-        $stmt->bind_param("ii", $group_id, $user_id);
-        $stmt->execute();
-        $result = $stmt->get_result();
-        if ($result->num_rows > 0) {
-            return true;
-        }
-        $stmt = $this->db->prepare("SELECT id FROM bot_sub_admins WHERE group_id = ? AND user_id = ?");
-        $stmt->bind_param("ii", $group_id, $user_id);
-        $stmt->execute();
-        $result = $stmt->get_result();
-        return $result->num_rows > 0;
+        return "نمایش راهنمای ربات / Show bot help";
     }
 }

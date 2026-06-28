@@ -2,20 +2,20 @@
 
 namespace Modules;
 
-class LockVoiceModule extends BaseLockModule
+class RemLockGifModule extends BaseLockModule
 {
     protected function getLockType(): string
     {
-        return 'voice';
+        return 'gif';
     }
 
     protected function getAction(): bool
     {
-        return true;
+        return false;
     }
 
     public static function getDescription(): string
     {
-        return "قفل ویس / Lock voice messages";
+        return "رفع قفل گیف / Unlock GIFs";
     }
 }

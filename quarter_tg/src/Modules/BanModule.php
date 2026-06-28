@@ -1,161 +1,258 @@
 <?php
+
 namespace Modules;
 
-use Helpers\TelegramApi;
-use Helpers\LanguageHelper;
+use QuarterTg\Core\Database;
+use QuarterTg\Core\Logger;
+use QuarterTg\Helpers\TelegramApi;
+use QuarterTg\Core\AuthorizationManager;
+use QuarterTg\Core\AdminManager;
 
+/**
+ * ماژول بن کردن کاربر از گروه
+ * فقط ادمین‌ها می‌توانند بن کنند
+ * ادمین‌ها و مالک اصلی قابل بن نیستند
+ */
 class BanModule
 {
+    private $telegram;
     private $db;
+    private $logger;
+    private $authManager;
+    private $adminManager;
+    private $banTable = 'bot_bans';
 
-    public function __construct()
-    {
-        global $db;
+    public function __construct(
+        TelegramApi $telegram,
+        Database $db,
+        Logger $logger,
+        AuthorizationManager $authManager,
+        AdminManager $adminManager
+    ) {
+        $this->telegram = $telegram;
         $this->db = $db;
+        $this->logger = $logger;
+        $this->authManager = $authManager;
+        $this->adminManager = $adminManager;
     }
 
-    public function handle(array $update, array $args, TelegramApi $api, string $command): void
+    /**
+     * اجرای ماژول
+     */
+    public function execute(array $message, string $params = '', int $chatId = 0, int $userId = 0): void
     {
-        $message = $update['message'] ?? null;
-        if (!$message) return;
+        if ($chatId === 0) {
+            $chatId = $message['chat']['id'] ?? 0;
+        }
+        if ($userId === 0) {
+            $userId = $message['from']['id'] ?? 0;
+        }
 
-        $chatId = $message['chat']['id'];
-        $msgId = $message['message_id'];
-        $chatType = $message['chat']['type'] ?? '';
-        $chatTitle = $message['chat']['title'] ?? '';
-
-        if ($chatType !== 'group' && $chatType !== 'supergroup') {
-            $api->sendMessage($chatId, "❌ This command can only be used in groups.", $msgId);
+        // فقط ادمین‌ها می‌توانند بن کنند
+        if (!$this->authManager->isAdmin($chatId, $userId)) {
+            $this->telegram->sendMessage(
+                $chatId,
+                "⛔ شما اجازه بن کردن کاربران را ندارید.",
+                $message['message_id'] ?? null
+            );
             return;
         }
 
-        $lang = LanguageHelper::getLanguageFromCommand($command);
-        if ($lang === 'en' && LanguageHelper::isPersianText($message['text'] ?? '')) {
-            $lang = 'fa';
-        }
-
-        $targetUserId = null;
-        $targetUsername = null;
-        $targetFirstName = null;
-        $targetLastName = null;
-
-        // 1) از آرگومان (یوزرنیم یا آیدی عددی)
-        if (!empty($args)) {
-            $target = $args[0];
-            $targetUserId = $api->resolveUserId($target);
-            if ($targetUserId === null) {
-                $msg = $lang === 'fa'
-                    ? "❌ کاربر یافت نشد. لطفاً یک @username معتبر یا شناسه عددی وارد کنید."
-                    : "❌ User not found. Please provide a valid @username or numeric ID.";
-                $api->sendMessage($chatId, $msg, $msgId);
-                return;
-            }
-            // برای دریافت نام کاربر از API (اختیاری)
-            $chatInfo = $api->request('getChat', ['chat_id' => $target]);
-            if ($chatInfo && isset($chatInfo['result'])) {
-                $targetFirstName = $chatInfo['result']['first_name'] ?? '';
-                $targetLastName = $chatInfo['result']['last_name'] ?? '';
-                $targetUsername = $chatInfo['result']['username'] ?? '';
-            }
-        } else {
-            // 2) از ریپلای
-            $targetUserId = $api->getUserIdFromReply($update);
-            if ($targetUserId === null) {
-                $msg = $lang === 'fa'
-                    ? "❌ لطفاً به پیام کاربری که می‌خواهید بن کنید ریپلای کنید یا @username او را وارد کنید."
-                    : "❌ Please reply to the user's message you want to ban or provide @username.";
-                $api->sendMessage($chatId, $msg, $msgId);
-                return;
-            }
-            // دریافت اطلاعات کاربر از ریپلای
-            $replyTo = $message['reply_to_message'] ?? null;
-            if ($replyTo && isset($replyTo['from'])) {
-                $targetFirstName = $replyTo['from']['first_name'] ?? '';
-                $targetLastName = $replyTo['from']['last_name'] ?? '';
-                $targetUsername = $replyTo['from']['username'] ?? '';
-            }
-        }
-
-        // جلوگیری از بن خود ربات
-        $botInfo = $api->request('getMe');
-        $botId = $botInfo && isset($botInfo['result']['id']) ? (int)$botInfo['result']['id'] : 0;
-        if ($targetUserId == $botId) {
-            $msg = $lang === 'fa'
-                ? "❌ نمی‌توانید خود ربات را بن کنید!"
-                : "❌ You cannot ban the bot itself!";
-            $api->sendMessage($chatId, $msg, $msgId);
+        // استخراج کاربر هدف
+        $targetUser = $this->extractTargetUser($message, $params);
+        if (!$targetUser) {
+            $this->telegram->sendMessage(
+                $chatId,
+                "❌ لطفاً یک کاربر را مشخص کنید.\n"
+                . "مثال: `/ban @username` یا ریپلای به پیام کاربر",
+                $message['message_id'] ?? null
+            );
             return;
         }
 
-        // بررسی اینکه کاربر هدف عضو گروه است
-        $member = $api->getChatMember($chatId, $targetUserId);
-        if (!$member || $member['status'] === 'left' || $member['status'] === 'kicked') {
-            $msg = $lang === 'fa'
-                ? "❌ کاربر عضو این گروه نیست یا قبلاً بن شده است."
-                : "❌ User is not a member of this group or already banned.";
-            $api->sendMessage($chatId, $msg, $msgId);
+        // بررسی اینکه کاربر هدف خودش نباشد
+        if ($targetUser['id'] == $userId) {
+            $this->telegram->sendMessage(
+                $chatId,
+                "❌ شما نمی‌توانید خودتان را بن کنید.",
+                $message['message_id'] ?? null
+            );
             return;
         }
 
-        // تکمیل اطلاعات کاربر در صورت نبودن
-        if (empty($targetFirstName) && isset($member['user'])) {
-            $targetFirstName = $member['user']['first_name'] ?? '';
-            $targetLastName = $member['user']['last_name'] ?? '';
-            $targetUsername = $member['user']['username'] ?? '';
+        // بررسی اینکه کاربر هدف ادمین نباشد
+        if ($this->authManager->isAdmin($chatId, $targetUser['id'])) {
+            $this->telegram->sendMessage(
+                $chatId,
+                "❌ شما نمی‌توانید یک ادمین را بن کنید.",
+                $message['message_id'] ?? null
+            );
+            return;
         }
 
-        // اجرای بن
-        $result = $api->request('kickChatMember', [
-            'chat_id' => $chatId,
-            'user_id' => $targetUserId,
-        ]);
-
-        if ($result && $result['ok']) {
-            // ---------- ذخیره در دیتابیس ----------
-            $adminId = $message['from']['id'] ?? 0;
-            $adminUsername = $message['from']['username'] ?? '';
-            $adminFirstName = $message['from']['first_name'] ?? '';
-            $adminLastName = $message['from']['last_name'] ?? '';
-            $adminName = trim($adminFirstName . ' ' . $adminLastName);
-
-            $targetName = trim($targetFirstName . ' ' . $targetLastName);
-
-            $sql = "INSERT INTO bot_bans (
-                user_id, username, first_name, last_name,
-                banned_by, banned_by_username, banned_by_name,
-                group_id, group_title, banned_at
-            ) VALUES (
-                {$targetUserId}, '{$this->db->escapeString($targetUsername)}',
-                '{$this->db->escapeString($targetFirstName)}',
-                '{$this->db->escapeString($targetLastName)}',
-                {$adminId}, '{$this->db->escapeString($adminUsername)}',
-                '{$this->db->escapeString($adminName)}',
-                {$chatId}, '{$this->db->escapeString($chatTitle)}',
-                " . (time() * 1000) . "
-            ) ON DUPLICATE KEY UPDATE
-                username = '{$this->db->escapeString($targetUsername)}',
-                first_name = '{$this->db->escapeString($targetFirstName)}',
-                last_name = '{$this->db->escapeString($targetLastName)}',
-                banned_by = {$adminId},
-                banned_by_username = '{$this->db->escapeString($adminUsername)}',
-                banned_by_name = '{$this->db->escapeString($adminName)}',
-                group_title = '{$this->db->escapeString($chatTitle)}',
-                updated_at = CURRENT_TIMESTAMP";
-
-            $this->db->execute($sql);
-            // ---------- پایان ذخیره در دیتابیس ----------
-
-            $mention = $targetUsername ? "@{$targetUsername}" : "<a href='tg://user?id={$targetUserId}'>{$targetName}</a>";
-            $msg = $lang === 'fa'
-                ? "✅ کاربر {$mention} با موفقیت از گروه بن شد."
-                : "✅ User {$mention} has been banned from the group.";
-            $api->sendMessage($chatId, $msg, $msgId, 'HTML');
-        } else {
-            $error = $result['description'] ?? 'Unknown error';
-            $msg = $lang === 'fa'
-                ? "❌ بن کردن کاربر با خطا مواجه شد: {$error}"
-                : "❌ Failed to ban user: {$error}";
-            $api->sendMessage($chatId, $msg, $msgId);
+        // بررسی اینکه کاربر هدف مالک اصلی نباشد
+        if ($this->authManager->isOwner($targetUser['id'])) {
+            $this->telegram->sendMessage(
+                $chatId,
+                "❌ شما نمی‌توانید مالک اصلی را بن کنید.",
+                $message['message_id'] ?? null
+            );
+            return;
         }
+
+        // بررسی اینکه کاربر قبلاً بن نشده باشد
+        if ($this->isUserBanned($chatId, $targetUser['id'])) {
+            $username = $targetUser['username'] ? '@' . $targetUser['username'] : "کاربر با آیدی {$targetUser['id']}";
+            $this->telegram->sendMessage(
+                $chatId,
+                "⚠️ کاربر {$username} قبلاً بن شده است.",
+                $message['message_id'] ?? null
+            );
+            return;
+        }
+
+        // استخراج دلیل بن (اگر در پارامترها وجود داشته باشد)
+        $reason = $this->extractReason($params, $targetUser);
+
+        // انجام عملیات بن
+        try {
+            $result = $this->telegram->banChatMember($chatId, $targetUser['id']);
+
+            if ($result && isset($result['result']) && $result['result'] === true) {
+                // ذخیره در دیتابیس
+                $this->saveBan($chatId, $targetUser['id'], $userId, $reason);
+
+                $username = $targetUser['username'] ? '@' . $targetUser['username'] : "کاربر با آیدی {$targetUser['id']}";
+                $messageText = "✅ کاربر {$username} با موفقیت بن شد.";
+                if ($reason) {
+                    $messageText .= "\n📝 دلیل: {$reason}";
+                }
+
+                $this->telegram->sendMessage(
+                    $chatId,
+                    $messageText,
+                    $message['message_id'] ?? null
+                );
+
+                $this->logger->info("User {$targetUser['id']} banned in group $chatId by $userId", [
+                    'reason' => $reason,
+                ]);
+            } else {
+                $this->telegram->sendMessage(
+                    $chatId,
+                    "❌ بن کردن کاربر با خطا مواجه شد. لطفاً دوباره تلاش کنید.",
+                    $message['message_id'] ?? null
+                );
+
+                $this->logger->error("Failed to ban user {$targetUser['id']} in group $chatId by $userId");
+            }
+        } catch (\Exception $e) {
+            $this->telegram->sendMessage(
+                $chatId,
+                "❌ خطا در بن کردن کاربر: " . $e->getMessage(),
+                $message['message_id'] ?? null
+            );
+
+            $this->logger->error("Ban exception: " . $e->getMessage());
+        }
+    }
+
+    /**
+     * استخراج کاربر هدف از پیام یا پارامترها
+     * @return array|null ['id' => int, 'username' => string|null, 'first_name' => string|null, 'last_name' => string|null]
+     */
+    private function extractTargetUser(array $message, string $params): ?array
+    {
+        // 1. بررسی پارامترها
+        if (!empty($params)) {
+            // پارامترها ممکن است شامل دلیل نیز باشند، بنابراین اولین کلمه را به عنوان یوزرنیم در نظر می‌گیریم
+            $parts = explode(' ', $params, 2);
+            $usernameOrId = trim($parts[0]);
+            
+            if (is_numeric($usernameOrId)) {
+                return [
+                    'id' => (int)$usernameOrId,
+                    'username' => null,
+                    'first_name' => null,
+                    'last_name' => null,
+                ];
+            }
+            
+            if (strpos($usernameOrId, '@') === 0) {
+                $chatMember = $this->telegram->getChatMember($message['chat']['id'], $usernameOrId);
+                if ($chatMember && isset($chatMember['user'])) {
+                    return [
+                        'id' => $chatMember['user']['id'],
+                        'username' => $chatMember['user']['username'] ?? null,
+                        'first_name' => $chatMember['user']['first_name'] ?? null,
+                        'last_name' => $chatMember['user']['last_name'] ?? null,
+                    ];
+                }
+                return null;
+            }
+        }
+
+        // 2. بررسی ریپلای
+        if (isset($message['reply_to_message']) && isset($message['reply_to_message']['from'])) {
+            $from = $message['reply_to_message']['from'];
+            return [
+                'id' => $from['id'],
+                'username' => $from['username'] ?? null,
+                'first_name' => $from['first_name'] ?? null,
+                'last_name' => $from['last_name'] ?? null,
+            ];
+        }
+
+        return null;
+    }
+
+    /**
+     * استخراج دلیل بن از پارامترها
+     */
+    private function extractReason(string $params, array $targetUser): ?string
+    {
+        $parts = explode(' ', $params, 2);
+        if (count($parts) > 1) {
+            return trim($parts[1]);
+        }
+
+        // اگر دلیل در ریپلای وجود داشت
+        // (این قابلیت را می‌توان به‌صورت اختیاری اضافه کرد)
+
+        return null;
+    }
+
+    /**
+     * بررسی اینکه کاربر قبلاً بن شده است یا خیر
+     */
+    private function isUserBanned(int $groupId, int $userId): bool
+    {
+        $sql = "SELECT id FROM {$this->banTable} WHERE group_id = ? AND user_id = ?";
+        $result = $this->db->queryColumn($sql, [$groupId, $userId]);
+        return $result !== false;
+    }
+
+    /**
+     * ذخیره اطلاعات بن در دیتابیس
+     */
+    private function saveBan(int $groupId, int $userId, int $bannedBy, ?string $reason): void
+    {
+        $data = [
+            'group_id' => $groupId,
+            'user_id' => $userId,
+            'banned_by' => $bannedBy,
+            'reason' => $reason,
+            'banned_at' => date('Y-m-d H:i:s'),
+        ];
+
+        $this->db->insert($this->banTable, $data);
+    }
+
+    /**
+     * توضیحات ماژول
+     */
+    public static function getDescription(): string
+    {
+        return "بن کردن کاربر از گروه / Ban user from group";
     }
 }

@@ -1,104 +1,180 @@
 <?php
+
 namespace Modules;
 
-use Helpers\TelegramApi;
-use Helpers\LanguageHelper;
+use QuarterTg\Core\Database;
+use QuarterTg\Core\Logger;
+use QuarterTg\Helpers\TelegramApi;
+use QuarterTg\Core\AuthorizationManager;
+use QuarterTg\Core\AdminManager;
 
+/**
+ * ماژول افزودن ادمین جدید به گروه
+ * فقط ادمین‌های اصلی می‌توانند ادمین جدید اضافه کنند
+ */
 class AddAdminModule
 {
+    private $telegram;
+    private $db;
+    private $logger;
+    private $authManager;
     private $adminManager;
 
-    public function __construct()
-    {
-        global $adminManager;
+    public function __construct(
+        TelegramApi $telegram,
+        Database $db,
+        Logger $logger,
+        AuthorizationManager $authManager,
+        AdminManager $adminManager
+    ) {
+        $this->telegram = $telegram;
+        $this->db = $db;
+        $this->logger = $logger;
+        $this->authManager = $authManager;
         $this->adminManager = $adminManager;
     }
 
-    public function handle(array $update, array $args, TelegramApi $api, string $command): void
+    /**
+     * اجرای ماژول
+     */
+    public function execute(array $message, string $params = '', int $chatId = 0, int $userId = 0): void
     {
-        $message = $update['message'] ?? null;
-        if (!$message) return;
-
-        $chatId = $message['chat']['id'];
-        $msgId = $message['message_id'];
-        $chatType = $message['chat']['type'] ?? '';
-
-        $lang = LanguageHelper::getLanguageFromCommand($command);
-        if ($lang === 'en' && LanguageHelper::isPersianText($message['text'] ?? '')) {
-            $lang = 'fa';
+        if ($chatId === 0) {
+            $chatId = $message['chat']['id'] ?? 0;
+        }
+        if ($userId === 0) {
+            $userId = $message['from']['id'] ?? 0;
         }
 
-        $messages = [
-            'only_groups' => [
-                'en' => "❌ This command can only be used in groups.",
-                'fa' => "❌ این دستور فقط در گروه قابل اجراست.",
-            ],
-            'user_not_found' => [
-                'en' => "❌ User not found. Please provide a valid @username or numeric ID.",
-                'fa' => "❌ کاربر یافت نشد. لطفاً یک @username معتبر یا شناسه عددی وارد کنید.",
-            ],
-            'provide_input' => [
-                'en' => "❌ Please provide a username/ID or reply to a user's message.\nExample: <code>/addadmin @username</code>",
-                'fa' => "❌ لطفاً یک نام کاربری/شناسه وارد کنید یا به پیام کاربر ریپلای کنید.\nمثال: <code>ست ادمین @username</code>",
-            ],
-            'cannot_add_bot' => [
-                'en' => "❌ Cannot add the bot itself as an admin.",
-                'fa' => "❌ نمی‌توان خود ربات را به عنوان ادمین اضافه کرد.",
-            ],
-            'not_member' => [
-                'en' => "❌ User is not a member of this group.",
-                'fa' => "❌ کاربر عضو این گروه نیست.",
-            ],
-            'already_admin' => [
-                'en' => "⚠️ User is already an admin for this group.",
-                'fa' => "⚠️ کاربر قبلاً به عنوان ادمین این گروه ثبت شده است.",
-            ],
-            'success' => [
-                'en' => "✅ User <b>{user}</b> has been added as admin for this group.",
-                'fa' => "✅ کاربر <b>{user}</b> به عنوان ادمین این گروه اضافه شد.",
-            ],
-        ];
-
-        if ($chatType !== 'group' && $chatType !== 'supergroup') {
-            $api->sendMessage($chatId, $messages['only_groups'][$lang], $msgId);
+        // بررسی ادمین بودن کاربر فرستنده (فقط ادمین‌های اصلی می‌توانند اضافه کنند)
+        if (!$this->authManager->isMainAdmin($chatId, $userId)) {
+            $this->telegram->sendMessage(
+                $chatId,
+                "⛔ فقط ادمین‌های اصلی می‌توانند ادمین جدید اضافه کنند.",
+                $message['message_id'] ?? null
+            );
             return;
         }
 
-        $targetUserId = null;
+        // استخراج کاربر هدف
+        $targetUser = $this->extractTargetUser($message, $params);
+        if (!$targetUser) {
+            $this->telegram->sendMessage(
+                $chatId,
+                "❌ لطفاً یک کاربر را مشخص کنید.\n"
+                . "مثال: `/addadmin @username` یا ریپلای به پیام کاربر",
+                $message['message_id'] ?? null
+            );
+            return;
+        }
 
-        if (!empty($args)) {
-            $target = $args[0];
-            $targetUserId = $api->resolveUserId($target);
-            if ($targetUserId === null) {
-                $api->sendMessage($chatId, $messages['user_not_found'][$lang], $msgId);
-                return;
-            }
+        // بررسی اینکه کاربر هدف خودش نباشد
+        if ($targetUser['id'] == $userId) {
+            $this->telegram->sendMessage(
+                $chatId,
+                "❌ شما نمی‌توانید خودتان را ادمین کنید.",
+                $message['message_id'] ?? null
+            );
+            return;
+        }
+
+        // بررسی اینکه کاربر هدف قبلاً ادمین نیست
+        if ($this->authManager->isAdmin($chatId, $targetUser['id'])) {
+            $this->telegram->sendMessage(
+                $chatId,
+                "⚠️ کاربر @" . ($targetUser['username'] ?? $targetUser['id']) . " قبلاً ادمین است.",
+                $message['message_id'] ?? null
+            );
+            return;
+        }
+
+        // افزودن ادمین
+        $result = $this->adminManager->addAdmin(
+            $chatId,
+            $targetUser['id'],
+            $userId,
+            $targetUser['username'] ?? null,
+            $targetUser['first_name'] ?? null,
+            $targetUser['last_name'] ?? null
+        );
+
+        if ($result) {
+            $username = $targetUser['username'] ? '@' . $targetUser['username'] : "کاربر با آیدی {$targetUser['id']}";
+            $this->telegram->sendMessage(
+                $chatId,
+                "✅ ادمین {$username} با موفقیت اضافه شد.",
+                $message['message_id'] ?? null
+            );
+
+            $this->logger->info("Admin {$targetUser['id']} added to group $chatId by $userId");
         } else {
-            $targetUserId = $api->getUserIdFromReply($update);
-            if ($targetUserId === null) {
-                $api->sendMessage($chatId, $messages['provide_input'][$lang], $msgId);
-                return;
+            $this->telegram->sendMessage(
+                $chatId,
+                "❌ افزودن ادمین با خطا مواجه شد. لطفاً دوباره تلاش کنید.",
+                $message['message_id'] ?? null
+            );
+
+            $this->logger->error("Failed to add admin {$targetUser['id']} to group $chatId by $userId");
+        }
+    }
+
+    /**
+     * استخراج کاربر هدف از پیام یا پارامترها
+     * @return array|null ['id' => int, 'username' => string|null, 'first_name' => string|null, 'last_name' => string|null]
+     */
+    private function extractTargetUser(array $message, string $params): ?array
+    {
+        // 1. بررسی پارامترها (یوزرنیم یا آیدی)
+        if (!empty($params)) {
+            $usernameOrId = trim($params);
+            
+            // اگر عدد است، به عنوان آیدی در نظر بگیر
+            if (is_numeric($usernameOrId)) {
+                return [
+                    'id' => (int)$usernameOrId,
+                    'username' => null,
+                    'first_name' => null,
+                    'last_name' => null,
+                ];
+            }
+            
+            // اگر با @ شروع می‌شود، یوزرنیم است
+            if (strpos($usernameOrId, '@') === 0) {
+                // دریافت اطلاعات کاربر از تلگرام
+                $chatMember = $this->telegram->getChatMember($message['chat']['id'], $usernameOrId);
+                if ($chatMember && isset($chatMember['user'])) {
+                    return [
+                        'id' => $chatMember['user']['id'],
+                        'username' => $chatMember['user']['username'] ?? null,
+                        'first_name' => $chatMember['user']['first_name'] ?? null,
+                        'last_name' => $chatMember['user']['last_name'] ?? null,
+                    ];
+                }
+                
+                // اگر یوزرنیم معتبر نبود
+                return null;
             }
         }
 
-        $botUser = $api->request('getMe');
-        if ($botUser && isset($botUser['result']['id']) && $botUser['result']['id'] == $targetUserId) {
-            $api->sendMessage($chatId, $messages['cannot_add_bot'][$lang], $msgId);
-            return;
+        // 2. بررسی ریپلای
+        if (isset($message['reply_to_message']) && isset($message['reply_to_message']['from'])) {
+            $from = $message['reply_to_message']['from'];
+            return [
+                'id' => $from['id'],
+                'username' => $from['username'] ?? null,
+                'first_name' => $from['first_name'] ?? null,
+                'last_name' => $from['last_name'] ?? null,
+            ];
         }
 
-        $member = $api->getChatMember($chatId, $targetUserId);
-        if (!$member || $member['status'] === 'left' || $member['status'] === 'kicked') {
-            $api->sendMessage($chatId, $messages['not_member'][$lang], $msgId);
-            return;
-        }
+        return null;
+    }
 
-        $success = $this->adminManager->addAdmin($targetUserId, $chatId);
-        if ($success) {
-            $response = str_replace('{user}', $targetUserId, $messages['success'][$lang]);
-            $api->sendMessage($chatId, $response, $msgId);
-        } else {
-            $api->sendMessage($chatId, $messages['already_admin'][$lang], $msgId);
-        }
+    /**
+     * توضیحات ماژول
+     */
+    public static function getDescription(): string
+    {
+        return "افزودن ادمین جدید به گروه / Add new admin to group";
     }
 }

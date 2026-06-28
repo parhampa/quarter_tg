@@ -1,43 +1,21 @@
 <?php
+
 namespace Modules;
 
-use Helpers\TelegramApi;
-use Helpers\LanguageHelper;
-
-class LockVideoNoteModule
+class LockVideoNoteModule extends BaseLockModule
 {
-    private $lockManager;
-
-    public function __construct()
+    protected function getLockType(): string
     {
-        global $lockManager;
-        $this->lockManager = $lockManager;
+        return 'video_note';
     }
 
-    public function handle(array $update, array $args, TelegramApi $api, string $command): void
+    protected function getAction(): bool
     {
-        $message = $update['message'] ?? null;
-        if (!$message) return;
+        return true;
+    }
 
-        $chatId = $message['chat']['id'];
-        $msgId = $message['message_id'];
-        $chatType = $message['chat']['type'] ?? '';
-
-        if ($chatType !== 'group' && $chatType !== 'supergroup') {
-            $api->sendMessage($chatId, "❌ This command can only be used in groups.", $msgId);
-            return;
-        }
-
-        $lang = LanguageHelper::getLanguageFromCommand($command);
-        if ($lang === 'en' && LanguageHelper::isPersianText($message['text'] ?? '')) {
-            $lang = 'fa';
-        }
-
-        $this->lockManager->setLock($chatId, 'video_notes', true);
-
-        $response = $lang === 'fa'
-            ? "🔒 قفل ویدئو مسیج فعال شد. کاربران غیرمدیر نمی‌توانند ویدئو مسیج ارسال کنند."
-            : "🔒 Video message lock enabled. Non-admin users cannot send video messages.";
-        $api->sendMessage($chatId, $response, $msgId);
+    public static function getDescription(): string
+    {
+        return "قفل ویدئو مسیج / Lock video notes";
     }
 }

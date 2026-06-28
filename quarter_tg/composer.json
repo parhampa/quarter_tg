@@ -1,0 +1,15 @@
+{
+    "name": "quarter_tg/telegram-bot",
+    "description": "Group management bot for Telegram",
+    "type": "project",
+    "require": {
+        "php": ">=7.4"
+    },
+    "autoload": {
+        "psr-4": {
+            "QuarterTg\\Core\\": "src/Core/",
+            "QuarterTg\\Helpers\\": "src/Helpers/",
+            "Modules\\": "src/Modules/"
+        }
+    }
+}

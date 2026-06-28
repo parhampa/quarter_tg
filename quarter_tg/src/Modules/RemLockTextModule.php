@@ -2,20 +2,20 @@
 
 namespace Modules;
 
-class LockVoiceModule extends BaseLockModule
+class RemLockTextModule extends BaseLockModule
 {
     protected function getLockType(): string
     {
-        return 'voice';
+        return 'text';
     }
 
     protected function getAction(): bool
     {
-        return true;
+        return false; // رفع قفل
     }
 
     public static function getDescription(): string
     {
-        return "قفل ویس / Lock voice messages";
+        return "رفع قفل پیام متنی / Unlock text messages";
     }
 }

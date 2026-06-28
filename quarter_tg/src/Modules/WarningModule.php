@@ -2,93 +2,207 @@
 
 namespace Modules;
 
-class WarningModule
+use QuarterTg\Core\Database;
+use QuarterTg\Core\Logger;
+use QuarterTg\Helpers\TelegramApi;
+use QuarterTg\Core\AuthorizationManager;
+use QuarterTg\Core\WarningManager;
+
+/**
+ * ماژول حذف تمام اخطارهای یک کاربر
+ * فقط ادمین‌ها می‌توانند اخطارها را حذف کنند
+ */
+class RemoveWarningModule
 {
-    private $warningManager;
     private $telegram;
     private $db;
     private $logger;
+    private $authManager;
+    private $warningManager;
 
-    public function __construct($warningManager, $telegram, $db, $logger)
-    {
-        $this->warningManager = $warningManager;
+    public function __construct(
+        TelegramApi $telegram,
+        Database $db,
+        Logger $logger,
+        AuthorizationManager $authManager,
+        WarningManager $warningManager
+    ) {
         $this->telegram = $telegram;
         $this->db = $db;
         $this->logger = $logger;
+        $this->authManager = $authManager;
+        $this->warningManager = $warningManager;
     }
 
-    public function execute($message, $params)
+    /**
+     * اجرای ماژول
+     */
+    public function execute(array $message, string $params = '', int $chatId = 0, int $userId = 0): void
     {
-        $chat_id = $message['chat']['id'];
-        $from_id = $message['from']['id'];
+        if ($chatId === 0) {
+            $chatId = $message['chat']['id'] ?? 0;
+        }
+        if ($userId === 0) {
+            $userId = $message['from']['id'] ?? 0;
+        }
 
-        // بررسی مجوز ادمین
-        if (!$this->isGroupAdmin($chat_id, $from_id)) {
-            $this->telegram->sendMessage($chat_id, "⛔ شما اجازه اجرای این دستور را ندارید.");
+        // فقط ادمین‌ها می‌توانند اخطارها را حذف کنند
+        if (!$this->authManager->isAdmin($chatId, $userId)) {
+            $this->telegram->sendMessage(
+                $chatId,
+                "⛔ شما اجازه حذف اخطارها را ندارید.",
+                $message['message_id'] ?? null
+            );
             return;
         }
 
-        // دریافت کاربر هدف
-        $target_user = $this->getTargetUser($message);
-        if (!$target_user) {
-            $this->telegram->sendMessage($chat_id, "⚠️ لطفاً روی پیام کاربر ریپلای کنید یا نام کاربری/آیدی عددی را وارد کنید.");
+        // استخراج کاربر هدف
+        $targetUser = $this->extractTargetUser($message, $params);
+        if (!$targetUser) {
+            $this->telegram->sendMessage(
+                $chatId,
+                "❌ لطفاً یک کاربر را مشخص کنید.\n"
+                . "مثال: `/remwarning @username`",
+                $message['message_id'] ?? null
+            );
             return;
         }
 
-        // جلوگیری از اخطار به ادمین‌ها
-        if ($this->isGroupAdmin($chat_id, $target_user)) {
-            $this->telegram->sendMessage($chat_id, "❌ نمی‌توانید به ادمین اخطار دهید.");
+        // بررسی اینکه کاربر اخطار دارد یا خیر
+        if (!$this->warningManager->hasWarnings($chatId, $targetUser['id'])) {
+            $username = $targetUser['username'] ? '@' . $targetUser['username'] : "کاربر با آیدی {$targetUser['id']}";
+            $this->telegram->sendMessage(
+                $chatId,
+                "⚠️ کاربر {$username} هیچ اخطاری ندارد.",
+                $message['message_id'] ?? null
+            );
             return;
         }
 
-        $reason = $params['reason'] ?? '';
-        $result = $this->warningManager->addWarning($chat_id, $target_user, $from_id, $reason);
+        // دریافت تعداد اخطارهای فعلی
+        $currentCount = $this->warningManager->getWarningCount($chatId, $targetUser['id']);
 
-        if ($result['status'] == 'banned') {
-            $this->telegram->sendMessage($chat_id, "⚠️ کاربر به دلیل دریافت ۳ اخطار به طور خودکار بن شد.");
-        } else {
-            $this->telegram->sendMessage($chat_id, "✅ اخطار ثبت شد. تعداد اخطارهای کاربر: {$result['count']}");
+        // حذف اخطارها
+        try {
+            $result = $this->warningManager->clearWarnings($chatId, $targetUser['id']);
+
+            if ($result) {
+                $username = $targetUser['username'] ? '@' . $targetUser['username'] : "کاربر با آیدی {$targetUser['id']}";
+                $this->telegram->sendMessage(
+                    $chatId,
+                    "✅ تمام اخطارهای کاربر {$username} (تعداد: {$currentCount}) با موفقیت حذف شد.",
+                    $message['message_id'] ?? null
+                );
+
+                $this->logger->info("All warnings removed for user {$targetUser['id']} in group $chatId by $userId", [
+                    'count' => $currentCount,
+                ]);
+            } else {
+                $this->telegram->sendMessage(
+                    $chatId,
+                    "❌ حذف اخطارها با خطا مواجه شد. لطفاً دوباره تلاش کنید.",
+                    $message['message_id'] ?? null
+                );
+
+                $this->logger->error("Failed to remove warnings for user {$targetUser['id']} in group $chatId by $userId");
+            }
+        } catch (\Exception $e) {
+            $this->telegram->sendMessage(
+                $chatId,
+                "❌ خطا در حذف اخطارها: " . $e->getMessage(),
+                $message['message_id'] ?? null
+            );
+
+            $this->logger->error("Remove warning exception: " . $e->getMessage());
         }
     }
 
-    private function getTargetUser($message)
+    /**
+     * استخراج کاربر هدف از پیام یا پارامترها
+     * @return array|null ['id' => int, 'username' => string|null, 'first_name' => string|null, 'last_name' => string|null]
+     */
+    private function extractTargetUser(array $message, string $params): ?array
     {
-        // ریپلای
-        if (isset($message['reply_to_message']['from']['id'])) {
-            return $message['reply_to_message']['from']['id'];
-        }
-
-        // بررسی متن برای @username یا ID عددی
-        $text = $message['text'] ?? '';
-        $parts = explode(' ', $text);
-        if (isset($parts[1])) {
-            $target = trim($parts[1]);
-            if (strpos($target, '@') === 0) {
-                // دریافت اطلاعات کاربر با username
-                $chat = $this->telegram->getChat($target);
-                if (isset($chat['id'])) {
-                    return $chat['id'];
+        // 1. بررسی پارامترها
+        if (!empty($params)) {
+            $usernameOrId = trim($params);
+            
+            if (is_numeric($usernameOrId)) {
+                return [
+                    'id' => (int)$usernameOrId,
+                    'username' => null,
+                    'first_name' => null,
+                    'last_name' => null,
+                ];
+            }
+            
+            if (strpos($usernameOrId, '@') === 0) {
+                try {
+                    $chatMember = $this->telegram->getChatMember($message['chat']['id'], $usernameOrId);
+                    if ($chatMember && isset($chatMember['user'])) {
+                        return [
+                            'id' => $chatMember['user']['id'],
+                            'username' => $chatMember['user']['username'] ?? null,
+                            'first_name' => $chatMember['user']['first_name'] ?? null,
+                            'last_name' => $chatMember['user']['last_name'] ?? null,
+                        ];
+                    }
+                } catch (\Exception $e) {
+                    // اگر کاربر در گروه نیست، اطلاعات را از دیتابیس می‌گیریم
+                    $userInfo = $this->getUserFromWarnings($message['chat']['id'], $usernameOrId);
+                    if ($userInfo) {
+                        return $userInfo;
+                    }
                 }
-            } elseif (is_numeric($target)) {
-                return (int)$target;
+                return null;
             }
         }
+
+        // 2. بررسی ریپلای
+        if (isset($message['reply_to_message']) && isset($message['reply_to_message']['from'])) {
+            $from = $message['reply_to_message']['from'];
+            return [
+                'id' => $from['id'],
+                'username' => $from['username'] ?? null,
+                'first_name' => $from['first_name'] ?? null,
+                'last_name' => $from['last_name'] ?? null,
+            ];
+        }
+
         return null;
     }
 
-    private function isGroupAdmin($group_id, $user_id)
+    /**
+     * دریافت اطلاعات کاربر از جدول اخطارها (در صورت عدم حضور در گروه)
+     */
+    private function getUserFromWarnings(int $groupId, string $username): ?array
     {
-        $stmt = $this->db->prepare("SELECT id FROM bot_admins WHERE group_id = ? AND user_id = ?");
-        $stmt->bind_param("ii", $group_id, $user_id);
-        $stmt->execute();
-        $result = $stmt->get_result();
-        if ($result->num_rows > 0) {
-            return true;
+        // حذف @ از ابتدا
+        $cleanUsername = ltrim($username, '@');
+        
+        $sql = "SELECT user_id, username, first_name, last_name 
+                FROM bot_warnings 
+                WHERE group_id = ? AND username = ? 
+                LIMIT 1";
+        $result = $this->db->queryRow($sql, [$groupId, $cleanUsername]);
+        
+        if ($result) {
+            return [
+                'id' => $result['user_id'],
+                'username' => $result['username'] ?? null,
+                'first_name' => $result['first_name'] ?? null,
+                'last_name' => $result['last_name'] ?? null,
+            ];
         }
-        $stmt = $this->db->prepare("SELECT id FROM bot_sub_admins WHERE group_id = ? AND user_id = ?");
-        $stmt->bind_param("ii", $group_id, $user_id);
-        $stmt->execute();
-        $result = $stmt->get_result();
-        return $result->num_rows > 0;
+        
+        return null;
+    }
+
+    /**
+     * توضیحات ماژول
+     */
+    public static function getDescription(): string
+    {
+        return "حذف تمام اخطارهای کاربر / Remove all warnings for user";
     }
 }

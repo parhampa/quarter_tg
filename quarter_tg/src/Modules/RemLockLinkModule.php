@@ -1,18 +1,21 @@
 <?php
 
-namespace QuarterTg\Modules;
+namespace Modules;
 
-use QuarterTg\Core\ModuleManager;
-
-class RemLockLinkModule extends ModuleManager
+class RemLockLinkModule extends BaseLockModule
 {
-    public function execute($message, $params)
+    protected function getLockType(): string
     {
-        $chatId = $message['chat']['id'];
-        $this->lockManager->setLock($chatId, 'link', false);
-        $this->telegramApi->sendMessage(
-            $chatId,
-            "🔓 قفل لینک برداشته شد.\nکاربران می‌توانند لینک ارسال کنند."
-        );
+        return 'link';
+    }
+
+    protected function getAction(): bool
+    {
+        return false;
+    }
+
+    public static function getDescription(): string
+    {
+        return "رفع قفل لینک / Unlock links";
     }
 }

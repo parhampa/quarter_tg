@@ -1,102 +1,325 @@
 <?php
 
-namespace Core;
+namespace QuarterTg\Core;
 
+/**
+ * کلاس مدیریت میوت (سکوت) کاربران در گروه
+ * پشتیبانی از میوت دائمی و موقت با قابلیت بررسی خودکار انقضا
+ */
 class MuteManager
 {
     private $db;
+    private $cache;
     private $telegram;
     private $logger;
+    private $table = 'bot_mutes';
+    private $cachePrefix = 'mute_';
+    private $cacheTtl = 300; // 5 minutes
 
-    public function __construct($db, $telegram, $logger)
+    /**
+     * @param Database $db
+     * @param Cache $cache
+     * @param TelegramApi|null $telegram (اختیاری برای حذف پیام‌ها)
+     * @param Logger|null $logger
+     */
+    public function __construct(Database $db, Cache $cache, $telegram = null, $logger = null)
     {
         $this->db = $db;
+        $this->cache = $cache;
         $this->telegram = $telegram;
         $this->logger = $logger;
     }
 
     /**
-     * ساکت کردن کاربر در گروه
-     *
-     * @param int $group_id
-     * @param int $user_id
-     * @param int $muted_by
-     * @param string $reason
+     * میوت کردن یک کاربر
+     * @param int $groupId آیدی گروه
+     * @param int $userId آیدی کاربر
+     * @param int $mutedBy آیدی ادمین میوت‌کننده
+     * @param string|null $reason دلیل میوت
+     * @param int|null $duration مدت زمان میوت بر حسب ثانیه (null = دائمی)
+     * @param bool $deleteMessages حذف پیام‌های کاربر (تا ۵۰ پیام آخر)
      * @return bool
      */
-    public function muteUser($group_id, $user_id, $muted_by, $reason = '')
-    {
-        // بررسی وجود سکوت قبلی
-        $stmt = $this->db->prepare("SELECT id FROM bot_mutes WHERE group_id = ? AND user_id = ?");
-        $stmt->bind_param("ii", $group_id, $user_id);
-        $stmt->execute();
-        $result = $stmt->get_result();
-        if ($result->num_rows > 0) {
-            return false; // قبلاً ساکت است
+    public function mute(
+        int $groupId,
+        int $userId,
+        int $mutedBy,
+        ?string $reason = null,
+        ?int $duration = null,
+        bool $deleteMessages = true
+    ): bool {
+        // بررسی وجود کاربر در دیتابیس
+        $existing = $this->getMuteInfo($groupId, $userId);
+        
+        if ($existing) {
+            // به‌روزرسانی میوت موجود
+            return $this->updateMute($groupId, $userId, $mutedBy, $reason, $duration);
         }
 
-        $stmt = $this->db->prepare("INSERT INTO bot_mutes (group_id, user_id, muted_by, muted_at, reason) VALUES (?, ?, ?, NOW(), ?)");
-        $stmt->bind_param("iiis", $group_id, $user_id, $muted_by, $reason);
-        $stmt->execute();
-        $this->logger->log("User $user_id muted in group $group_id by $muted_by");
-        return true;
-    }
+        // درج میوت جدید
+        $data = [
+            'group_id' => $groupId,
+            'user_id' => $userId,
+            'muted_by' => $mutedBy,
+            'reason' => $reason,
+            'muted_at' => date('Y-m-d H:i:s'),
+        ];
 
-    /**
-     * حذف سکوت کاربر
-     *
-     * @param int $group_id
-     * @param int $user_id
-     * @return bool
-     */
-    public function unmuteUser($group_id, $user_id)
-    {
-        $stmt = $this->db->prepare("DELETE FROM bot_mutes WHERE group_id = ? AND user_id = ?");
-        $stmt->bind_param("ii", $group_id, $user_id);
-        $stmt->execute();
-        if ($stmt->affected_rows > 0) {
-            $this->logger->log("User $user_id unmuted in group $group_id");
+        if ($duration !== null) {
+            $data['until'] = date('Y-m-d H:i:s', time() + $duration);
+        }
+
+        $result = $this->db->insert($this->table, $data);
+
+        if ($result) {
+            // پاک کردن کش
+            $this->cache->delete($this->cachePrefix . $groupId . '_' . $userId);
+            
+            // حذف پیام‌های کاربر (اختیاری)
+            if ($deleteMessages && $this->telegram) {
+                $this->deleteUserMessages($groupId, $userId);
+            }
+
+            // لاگ
+            if ($this->logger) {
+                $this->logger->info("User $userId muted in group $groupId by admin $mutedBy", [
+                    'duration' => $duration,
+                    'reason' => $reason,
+                ]);
+            }
+
             return true;
         }
+
         return false;
     }
 
     /**
-     * بررسی سکوت بودن کاربر
-     *
-     * @param int $group_id
-     * @param int $user_id
-     * @return bool
+     * رفع میوت کاربر
      */
-    public function isMuted($group_id, $user_id)
+    public function unmute(int $groupId, int $userId): bool
     {
-        $stmt = $this->db->prepare("SELECT id FROM bot_mutes WHERE group_id = ? AND user_id = ?");
-        $stmt->bind_param("ii", $group_id, $user_id);
-        $stmt->execute();
-        $result = $stmt->get_result();
-        return $result->num_rows > 0;
+        $sql = "DELETE FROM {$this->table} WHERE group_id = ? AND user_id = ?";
+        $result = $this->db->execute($sql, [$groupId, $userId]);
+
+        if ($result > 0) {
+            // پاک کردن کش
+            $this->cache->delete($this->cachePrefix . $groupId . '_' . $userId);
+
+            if ($this->logger) {
+                $this->logger->info("User $userId unmuted in group $groupId");
+            }
+
+            return true;
+        }
+
+        return false;
     }
 
     /**
-     * حذف پیام‌های اخیر کاربر (برای پاکسازی هنگام سکوت)
-     *
-     * @param int $group_id
-     * @param int $user_id
-     * @param int $limit
-     * @return int تعداد پیام‌های حذف‌شده
+     * بررسی میوت بودن کاربر
      */
-    public function deleteUserMessages($group_id, $user_id, $limit = 50)
+    public function isMuted(int $groupId, int $userId): bool
     {
-        $stmt = $this->db->prepare("SELECT message_id FROM bot_messages WHERE group_id = ? AND user_id = ? ORDER BY id DESC LIMIT ?");
-        $stmt->bind_param("iii", $group_id, $user_id, $limit);
-        $stmt->execute();
-        $result = $stmt->get_result();
-        $count = 0;
-        while ($row = $result->fetch_assoc()) {
-            // حذف پیام از تلگرام
-            $this->telegram->deleteMessage($group_id, $row['message_id']);
-            $count++;
+        $muteInfo = $this->getMuteInfo($groupId, $userId);
+        
+        if (!$muteInfo) {
+            return false;
         }
-        return $count;
+
+        // بررسی انقضا
+        if (isset($muteInfo['until']) && $muteInfo['until'] !== null) {
+            $until = strtotime($muteInfo['until']);
+            if ($until < time()) {
+                // میوت منقضی شده، حذف خودکار
+                $this->unmute($groupId, $userId);
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    /**
+     * دریافت اطلاعات میوت کاربر
+     * @return array|null
+     */
+    public function getMuteInfo(int $groupId, int $userId): ?array
+    {
+        $cacheKey = $this->cachePrefix . $groupId . '_' . $userId;
+        $cached = $this->cache->get($cacheKey);
+        if ($cached !== null) {
+            return $cached;
+        }
+
+        $sql = "SELECT * FROM {$this->table} WHERE group_id = ? AND user_id = ?";
+        $result = $this->db->queryRow($sql, [$groupId, $userId]);
+
+        if ($result) {
+            $this->cache->set($cacheKey, $result, $this->cacheTtl);
+        }
+
+        return $result;
+    }
+
+    /**
+     * دریافت لیست کاربران میوت‌شده یک گروه
+     * @return array
+     */
+    public function getMutedUsers(int $groupId): array
+    {
+        $sql = "SELECT * FROM {$this->table} WHERE group_id = ? AND (until IS NULL OR until > NOW())";
+        return $this->db->query($sql, [$groupId]);
+    }
+
+    /**
+     * به‌روزرسانی میوت موجود
+     */
+    private function updateMute(int $groupId, int $userId, int $mutedBy, ?string $reason, ?int $duration): bool
+    {
+        $data = [
+            'muted_by' => $mutedBy,
+            'muted_at' => date('Y-m-d H:i:s'),
+        ];
+
+        if ($reason !== null) {
+            $data['reason'] = $reason;
+        }
+
+        if ($duration !== null) {
+            $data['until'] = date('Y-m-d H:i:s', time() + $duration);
+        } else {
+            $data['until'] = null;
+        }
+
+        $result = $this->db->update($this->table, $data, [
+            'group_id' => $groupId,
+            'user_id' => $userId,
+        ]);
+
+        if ($result > 0) {
+            $this->cache->delete($this->cachePrefix . $groupId . '_' . $userId);
+            return true;
+        }
+
+        return false;
+    }
+
+    /**
+     * حذف پیام‌های یک کاربر (حداکثر ۵۰ پیام آخر)
+     */
+    private function deleteUserMessages(int $groupId, int $userId): void
+    {
+        if (!$this->telegram) {
+            return;
+        }
+
+        try {
+            // دریافت ۵۰ پیام آخر کاربر از دیتابیس یا از API
+            // اینجا یک نمونه ساده با فرض اینکه دیتابیس پیام‌ها را ذخیره می‌کند
+            $sql = "SELECT message_id FROM bot_messages 
+                    WHERE group_id = ? AND user_id = ? 
+                    ORDER BY sent_at DESC LIMIT 50";
+            $messages = $this->db->query($sql, [$groupId, $userId]);
+
+            foreach ($messages as $msg) {
+                $this->telegram->deleteMessage($groupId, $msg['message_id']);
+            }
+        } catch (\Exception $e) {
+            if ($this->logger) {
+                $this->logger->warning("Failed to delete messages for user $userId in group $groupId: " . $e->getMessage());
+            }
+        }
+    }
+
+    /**
+     * تمدید مدت میوت
+     * @return bool
+     */
+    public function extendMute(int $groupId, int $userId, int $extraSeconds): bool
+    {
+        $muteInfo = $this->getMuteInfo($groupId, $userId);
+        if (!$muteInfo) {
+            return false;
+        }
+
+        $currentUntil = $muteInfo['until'] ?? null;
+        if ($currentUntil === null) {
+            // میوت دائمی است، تغییری نمی‌کنیم
+            return true;
+        }
+
+        $newUntil = strtotime($currentUntil) + $extraSeconds;
+        $data = ['until' => date('Y-m-d H:i:s', $newUntil)];
+
+        $result = $this->db->update($this->table, $data, [
+            'group_id' => $groupId,
+            'user_id' => $userId,
+        ]);
+
+        if ($result > 0) {
+            $this->cache->delete($this->cachePrefix . $groupId . '_' . $userId);
+            return true;
+        }
+
+        return false;
+    }
+
+    /**
+     * حذف میوت‌های منقضی‌شده (برای اجرا توسط کرون جاب)
+     * @return int تعداد میوت‌های حذف‌شده
+     */
+    public function cleanExpiredMutes(): int
+    {
+        $sql = "DELETE FROM {$this->table} WHERE until IS NOT NULL AND until < NOW()";
+        return $this->db->execute($sql, []);
+    }
+
+    /**
+     * دریافت آمار میوت‌های یک گروه
+     * @return array ['total' => int, 'permanent' => int, 'temporary' => int, 'expired' => int]
+     */
+    public function getStats(int $groupId): array
+    {
+        $sql = "SELECT 
+                    COUNT(*) as total,
+                    SUM(CASE WHEN until IS NULL THEN 1 ELSE 0 END) as permanent,
+                    SUM(CASE WHEN until IS NOT NULL AND until > NOW() THEN 1 ELSE 0 END) as temporary,
+                    SUM(CASE WHEN until IS NOT NULL AND until < NOW() THEN 1 ELSE 0 END) as expired
+                FROM {$this->table} 
+                WHERE group_id = ?";
+        
+        $result = $this->db->queryRow($sql, [$groupId]);
+        
+        return [
+            'total' => (int)($result['total'] ?? 0),
+            'permanent' => (int)($result['permanent'] ?? 0),
+            'temporary' => (int)($result['temporary'] ?? 0),
+            'expired' => (int)($result['expired'] ?? 0),
+        ];
+    }
+
+    /**
+     * تنظیم Telegram API برای حذف پیام‌ها
+     */
+    public function setTelegram($telegram): void
+    {
+        $this->telegram = $telegram;
+    }
+
+    /**
+     * تنظیم Logger
+     */
+    public function setLogger($logger): void
+    {
+        $this->logger = $logger;
+    }
+
+    /**
+     * تنظیم TTL کش
+     */
+    public function setCacheTtl(int $ttl): void
+    {
+        $this->cacheTtl = $ttl;
     }
 }

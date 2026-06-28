@@ -1,90 +1,232 @@
 <?php
-namespace Core;
 
+namespace QuarterTg\Core;
+
+/**
+ * کلاس مدیریت اتصال به دیتابیس با PDO
+ * پشتیبانی از MySQL/MariaDB با Prepared Statements
+ */
 class Database
 {
-    private $connection;
-    private static $instance = null;
+    private $pdo;
+    private $config;
+    private $connected = false;
+    private $lastError = null;
 
-    private function __construct(array $config)
+    /**
+     * @param array $config آرایه تنظیمات شامل host, name, user, password, charset
+     */
+    public function __construct(array $config)
     {
-        $this->connection = new \mysqli(
-            $config['host'],
-            $config['username'],
-            $config['password'],
-            $config['database']
+        $this->config = $config;
+        $this->connect();
+    }
+
+    /**
+     * برقراری اتصال به دیتابیس
+     */
+    private function connect(): void
+    {
+        try {
+            $dsn = sprintf(
+                "mysql:host=%s;dbname=%s;charset=%s",
+                $this->config['host'],
+                $this->config['name'],
+                $this->config['charset'] ?? 'utf8mb4'
+            );
+
+            $this->pdo = new \PDO($dsn, $this->config['user'], $this->config['password'], [
+                \PDO::ATTR_ERRMODE            => \PDO::ERRMODE_EXCEPTION,
+                \PDO::ATTR_DEFAULT_FETCH_MODE => \PDO::FETCH_ASSOC,
+                \PDO::ATTR_EMULATE_PREPARES   => false,
+                \PDO::MYSQL_ATTR_INIT_COMMAND => "SET NAMES utf8mb4 COLLATE utf8mb4_unicode_ci",
+            ]);
+
+            $this->connected = true;
+        } catch (\PDOException $e) {
+            $this->connected = false;
+            $this->lastError = $e->getMessage();
+            throw new \RuntimeException("Database connection failed: " . $e->getMessage());
+        }
+    }
+
+    /**
+     * اجرای یک کوئری SELECT و برگرداندن همه‌ی رکوردها
+     * @return array|false
+     */
+    public function query(string $sql, array $params = [])
+    {
+        $stmt = $this->prepare($sql);
+        $stmt->execute($params);
+        return $stmt->fetchAll();
+    }
+
+    /**
+     * اجرای یک کوئری SELECT و برگرداندن یک رکورد
+     * @return array|false
+     */
+    public function queryRow(string $sql, array $params = [])
+    {
+        $stmt = $this->prepare($sql);
+        $stmt->execute($params);
+        return $stmt->fetch();
+    }
+
+    /**
+     * اجرای یک کوئری SELECT و برگرداندن مقدار یک ستون
+     * @return mixed|false
+     */
+    public function queryColumn(string $sql, array $params = [])
+    {
+        $stmt = $this->prepare($sql);
+        $stmt->execute($params);
+        return $stmt->fetchColumn();
+    }
+
+    /**
+     * اجرای یک کوئری INSERT/UPDATE/DELETE و برگرداندن تعداد ردیف‌های تحت تأثیر
+     */
+    public function execute(string $sql, array $params = []): int
+    {
+        $stmt = $this->prepare($sql);
+        $stmt->execute($params);
+        return $stmt->rowCount();
+    }
+
+    /**
+     * درج یک رکورد و برگرداندن ID آخرین درج
+     */
+    public function insert(string $table, array $data): int
+    {
+        $fields = array_keys($data);
+        $placeholders = array_fill(0, count($fields), '?');
+        $sql = sprintf(
+            "INSERT INTO `%s` (`%s`) VALUES (%s)",
+            $table,
+            implode('`, `', $fields),
+            implode(', ', $placeholders)
         );
-        if ($this->connection->connect_error) {
-            throw new \Exception("Database connection failed: " . $this->connection->connect_error);
+
+        $stmt = $this->prepare($sql);
+        $stmt->execute(array_values($data));
+        return (int) $this->pdo->lastInsertId();
+    }
+
+    /**
+     * به‌روزرسانی یک یا چند رکورد
+     */
+    public function update(string $table, array $data, array $where, string $operator = 'AND'): int
+    {
+        $setParts = [];
+        $params = [];
+
+        foreach ($data as $key => $value) {
+            $setParts[] = "`$key` = ?";
+            $params[] = $value;
         }
-        $this->connection->set_charset($config['charset'] ?? 'utf8mb4');
-    }
 
-    public static function getInstance(array $config): self
-    {
-        if (self::$instance === null) {
-            self::$instance = new self($config);
+        $whereParts = [];
+        foreach ($where as $key => $value) {
+            $whereParts[] = "`$key` = ?";
+            $params[] = $value;
         }
-        return self::$instance;
+
+        $sql = sprintf(
+            "UPDATE `%s` SET %s WHERE %s",
+            $table,
+            implode(', ', $setParts),
+            implode(" $operator ", $whereParts)
+        );
+
+        return $this->execute($sql, $params);
     }
 
-    public function getConnection(): \mysqli
+    /**
+     * حذف رکوردها با شرط
+     */
+    public function delete(string $table, array $where, string $operator = 'AND'): int
     {
-        return $this->connection;
-    }
+        $whereParts = [];
+        $params = [];
 
-    public function query(string $sql): ?\mysqli_result
-    {
-        $result = $this->connection->query($sql);
-        if ($result === false) {
-            throw new \Exception("Query error: " . $this->connection->error . " SQL: " . $sql);
+        foreach ($where as $key => $value) {
+            $whereParts[] = "`$key` = ?";
+            $params[] = $value;
         }
-        return $result;
+
+        $sql = sprintf(
+            "DELETE FROM `%s` WHERE %s",
+            $table,
+            implode(" $operator ", $whereParts)
+        );
+
+        return $this->execute($sql, $params);
     }
 
-    public function fetchAll(string $sql): array
+    /**
+     * آماده‌سازی یک کوئری (از بیرون قابل دسترسی برای Prepared Statements دستی)
+     */
+    public function prepare(string $sql): \PDOStatement
     {
-        $result = $this->query($sql);
-        if ($result === null) {
-            return [];
+        return $this->pdo->prepare($sql);
+    }
+
+    /**
+     * آغاز تراکنش
+     */
+    public function beginTransaction(): bool
+    {
+        return $this->pdo->beginTransaction();
+    }
+
+    /**
+     * تأیید تراکنش
+     */
+    public function commit(): bool
+    {
+        return $this->pdo->commit();
+    }
+
+    /**
+     * بازگشت تراکنش
+     */
+    public function rollback(): bool
+    {
+        return $this->pdo->rollBack();
+    }
+
+    /**
+     * بررسی وضعیت اتصال
+     */
+    public function isConnected(): bool
+    {
+        return $this->connected;
+    }
+
+    /**
+     * دریافت آخرین خطا
+     */
+    public function getLastError(): ?string
+    {
+        return $this->lastError;
+    }
+
+    /**
+     * دریافت شیء PDO (برای موارد خاص)
+     */
+    public function getPdo(): \PDO
+    {
+        return $this->pdo;
+    }
+
+    /**
+     * فراخوانی متدهای PDO به‌صورت داینامیک
+     */
+    public function __call($method, $args)
+    {
+        if (method_exists($this->pdo, $method)) {
+            return call_user_func_array([$this->pdo, $method], $args);
         }
-        $rows = [];
-        while ($row = $result->fetch_assoc()) {
-            $rows[] = $row;
-        }
-        return $rows;
-    }
-
-    public function fetchOne(string $sql): ?array
-    {
-        $result = $this->query($sql);
-        if ($result === null || $result->num_rows === 0) {
-            return null;
-        }
-        return $result->fetch_assoc();
-    }
-
-    public function execute(string $sql): bool
-    {
-        $result = $this->connection->query($sql);
-        if ($result === false) {
-            throw new \Exception("Execute error: " . $this->connection->error . " SQL: " . $sql);
-        }
-        return true;
-    }
-
-    public function escapeString(string $string): string
-    {
-        return $this->connection->real_escape_string($string);
-    }
-
-    public function getLastInsertId(): int
-    {
-        return $this->connection->insert_id;
-    }
-
-    public function close(): void
-    {
-        $this->connection->close();
+        throw new \BadMethodCallException("Method $method does not exist in PDO or Database");
     }
 }

@@ -5,6 +5,10 @@ namespace QuarterTg\Core;
 use QuarterTg\Helpers\TelegramApi;
 use QuarterTg\Helpers\LanguageHelper;
 
+/**
+ * کلاس اصلی ربات
+ * تمام منطق پردازش پیام‌ها، قفل‌ها، دستورات و رویدادها در اینجا یکپارچه شده است
+ */
 class Bot
 {
     private $telegramApi;
@@ -33,20 +37,50 @@ class Bot
         $this->lockManager = new LockManager($database, $cache);
         $this->muteManager = new MuteManager($database, $cache);
         $this->warningManager = new WarningManager($database, $cache);
-        $this->authorizationManager = new AuthorizationManager($database, $cache);
+        $this->authorizationManager = new AuthorizationManager($database, $cache, $config['owner_id']);
         $this->adminManager = new AdminManager($database, $cache);
         $this->welcomeManager = new WelcomeManager($database, $cache);
         $this->messageLogger = new MessageLogger($database);
         $this->commandLogger = new CommandLogger($database);
-        $this->moduleManager = new ModuleManager($config['command_map'], $this);
+        
+        // تنظیم وابستگی‌های مورد نیاز برای مدیران
+        $this->muteManager->setTelegram($this->telegramApi);
+        $this->muteManager->setLogger($this->logger);
+        $this->warningManager->setTelegram($this->telegramApi);
+        $this->warningManager->setLogger($this->logger);
+        $this->welcomeManager->setTelegram($this->telegramApi);
+        $this->welcomeManager->setLogger($this->logger);
+        
+        // ModuleManager
+        $this->moduleManager = new ModuleManager(
+            $config['command_map'],
+            [
+                'telegram' => $this->telegramApi,
+                'db' => $this->database,
+                'logger' => $this->logger,
+                'lockManager' => $this->lockManager,
+                'muteManager' => $this->muteManager,
+                'warningManager' => $this->warningManager,
+                'authManager' => $this->authorizationManager,
+                'adminManager' => $this->adminManager,
+                'welcomeManager' => $this->welcomeManager,
+                'messageLogger' => $this->messageLogger,
+                'commandLogger' => $this->commandLogger,
+                'cache' => $this->cache,
+            ]
+        );
     }
 
     /**
-     * پردازش پیام دریافتی از تلگرام
+     * پردازش درخواست دریافتی از تلگرام
      */
     public function handleRequest($update)
     {
         if (!isset($update['message'])) {
+            // پردازش callback_query در صورت نیاز
+            if (isset($update['callback_query'])) {
+                $this->handleCallback($update['callback_query']);
+            }
             return;
         }
 
@@ -148,7 +182,7 @@ class Bot
             }
         }
 
-        // ✅ قفل هشتگ (جدید)
+        // قفل هشتگ
         if (!$locked && isset($message['text']) && $this->lockManager->isLocked($chatId, 'hashtag')) {
             $text = $message['text'] ?? '';
             if ($this->containsHashtag($text)) {
@@ -159,11 +193,10 @@ class Bot
         if ($locked) {
             // حذف پیام
             $this->telegramApi->deleteMessage($chatId, $messageId);
-            // (اختیاری) اطلاع به کاربر
+            // اطلاع به کاربر
             $this->telegramApi->sendMessage(
                 $chatId,
                 "⛔ ارسال این نوع محتوا در گروه ممنوع است.",
-                null,
                 $messageId
             );
             $this->logger->info("Locked message deleted in chat $chatId from user $userId");
@@ -198,16 +231,13 @@ class Bot
     }
 
     /**
-     * ✅ بررسی وجود هشتگ در متن (جدید)
-     * از حروف انگلیسی، فارسی و اعداد پشتیبانی می‌کند
+     * بررسی وجود هشتگ در متن
      */
     private function containsHashtag($text)
     {
         if (empty($text)) {
             return false;
         }
-        // الگوی تشخیص هشتگ: # به همراه حروف (انگلیسی، فارسی، عربی) و اعداد و زیرخط
-        // \w = [a-zA-Z0-9_]  و \x{0600}-\x{06FF} = حروف فارسی/عربی
         $pattern = '/#[\w\x{0600}-\x{06FF}]+/u';
         return preg_match($pattern, $text) === 1;
     }
@@ -240,7 +270,7 @@ class Bot
         $command = $parts[0];
         $params = $parts[1] ?? '';
 
-        // بررسی مجوز دستور
+        // بررسی مجوز دستور (فقط برای ادمین‌ها)
         if (!$this->authorizationManager->canExecute($chatId, $userId, $command)) {
             $this->telegramApi->sendMessage(
                 $chatId,
@@ -253,22 +283,23 @@ class Bot
         $this->commandLogger->log($chatId, $userId, $command, $params);
 
         // اجرای ماژول
-        $moduleName = $this->moduleManager->getModuleName($command);
-        if ($moduleName) {
-            $module = $this->moduleManager->loadModule($moduleName);
-            if ($module) {
-                $module->execute($message, $params);
-            }
-        } else {
-            $this->telegramApi->sendMessage(
-                $chatId,
-                "❌ دستور ناشناخته. برای راهنمایی /help را وارد کنید."
-            );
-        }
+        $this->moduleManager->runModule($command, ['message' => $message], $chatId, $userId, $params);
+    }
+
+    /**
+     * پردازش Callback Query (برای دکمه‌های اینلاین)
+     */
+    private function handleCallback($callback)
+    {
+        // در صورت نیاز به مدیریت دکمه‌ها
+        $this->telegramApi->answerCallbackQuery([
+            'callback_query_id' => $callback['id'],
+            'text' => 'عملیات با موفقیت انجام شد.'
+        ]);
     }
 
     // ========================
-    // متدهای Getter برای دسترسی سایر کلاس‌ها
+    // متدهای Getter برای دسترسی سایر کلاس‌ها (در صورت نیاز)
     // ========================
 
     public function getTelegramApi()

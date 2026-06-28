@@ -1,103 +1,188 @@
 <?php
+
 namespace Modules;
 
-use Helpers\TelegramApi;
-use Helpers\LanguageHelper;
+use QuarterTg\Core\Database;
+use QuarterTg\Core\Logger;
+use QuarterTg\Helpers\TelegramApi;
+use QuarterTg\Core\AuthorizationManager;
+use QuarterTg\Core\AdminManager;
 
+/**
+ * ماژول حذف ادمین از گروه
+ * فقط ادمین‌های اصلی می‌توانند ادمین حذف کنند
+ * مالک اصلی قابل حذف نیست
+ */
 class RemoveAdminModule
 {
+    private $telegram;
+    private $db;
+    private $logger;
+    private $authManager;
     private $adminManager;
 
-    public function __construct()
-    {
-        global $adminManager;
+    public function __construct(
+        TelegramApi $telegram,
+        Database $db,
+        Logger $logger,
+        AuthorizationManager $authManager,
+        AdminManager $adminManager
+    ) {
+        $this->telegram = $telegram;
+        $this->db = $db;
+        $this->logger = $logger;
+        $this->authManager = $authManager;
         $this->adminManager = $adminManager;
     }
 
-    public function handle(array $update, array $args, TelegramApi $api, string $command): void
+    /**
+     * اجرای ماژول
+     */
+    public function execute(array $message, string $params = '', int $chatId = 0, int $userId = 0): void
     {
-        $message = $update['message'] ?? null;
-        if (!$message) return;
-
-        $chatId = $message['chat']['id'];
-        $msgId = $message['message_id'];
-        $chatType = $message['chat']['type'] ?? '';
-
-        $lang = LanguageHelper::getLanguageFromCommand($command);
-        if ($lang === 'en' && LanguageHelper::isPersianText($message['text'] ?? '')) {
-            $lang = 'fa';
+        if ($chatId === 0) {
+            $chatId = $message['chat']['id'] ?? 0;
+        }
+        if ($userId === 0) {
+            $userId = $message['from']['id'] ?? 0;
         }
 
-        $messages = [
-            'only_groups' => [
-                'en' => "❌ This command can only be used in groups.",
-                'fa' => "❌ این دستور فقط در گروه قابل اجراست.",
-            ],
-            'user_not_found' => [
-                'en' => "❌ User not found. Please provide a valid @username or numeric ID.",
-                'fa' => "❌ کاربر یافت نشد. لطفاً یک @username معتبر یا شناسه عددی وارد کنید.",
-            ],
-            'provide_input' => [
-                'en' => "❌ Please provide a username/ID or reply to a user's message.\nExample: <code>/remadmin @username</code>",
-                'fa' => "❌ لطفاً یک نام کاربری/شناسه وارد کنید یا به پیام کاربر ریپلای کنید.\nمثال: <code>حذف ادمین @username</code>",
-            ],
-            'cannot_remove_self' => [
-                'en' => "❌ You cannot remove yourself from admins.",
-                'fa' => "❌ نمی‌توانید خودتان را از ادمینی حذف کنید.",
-            ],
-            'not_admin' => [
-                'en' => "⚠️ User is not an admin for this group.",
-                'fa' => "⚠️ کاربر ادمین این گروه نیست.",
-            ],
-            'failed' => [
-                'en' => "❌ Failed to remove user. Please try again.",
-                'fa' => "❌ حذف کاربر با شکست مواجه شد. لطفاً دوباره تلاش کنید.",
-            ],
-            'success' => [
-                'en' => "✅ User <b>{user}</b> has been removed from admins for this group.",
-                'fa' => "✅ کاربر <b>{user}</b> از ادمینی این گروه حذف شد.",
-            ],
-        ];
-
-        if ($chatType !== 'group' && $chatType !== 'supergroup') {
-            $api->sendMessage($chatId, $messages['only_groups'][$lang], $msgId);
+        // فقط ادمین‌های اصلی می‌توانند حذف کنند
+        if (!$this->authManager->isMainAdmin($chatId, $userId)) {
+            $this->telegram->sendMessage(
+                $chatId,
+                "⛔ فقط ادمین‌های اصلی می‌توانند ادمین حذف کنند.",
+                $message['message_id'] ?? null
+            );
             return;
         }
 
-        $targetUserId = null;
+        // استخراج کاربر هدف
+        $targetUser = $this->extractTargetUser($message, $params);
+        if (!$targetUser) {
+            $this->telegram->sendMessage(
+                $chatId,
+                "❌ لطفاً یک کاربر را مشخص کنید.\n"
+                . "مثال: `/remadmin @username` یا ریپلای به پیام کاربر",
+                $message['message_id'] ?? null
+            );
+            return;
+        }
 
-        if (!empty($args)) {
-            $target = $args[0];
-            $targetUserId = $api->resolveUserId($target);
-            if ($targetUserId === null) {
-                $api->sendMessage($chatId, $messages['user_not_found'][$lang], $msgId);
-                return;
-            }
+        // بررسی اینکه کاربر هدف خودش نباشد
+        if ($targetUser['id'] == $userId) {
+            $this->telegram->sendMessage(
+                $chatId,
+                "❌ شما نمی‌توانید خودتان را حذف کنید.",
+                $message['message_id'] ?? null
+            );
+            return;
+        }
+
+        // بررسی اینکه کاربر هدف مالک اصلی نباشد
+        if ($this->authManager->isOwner($targetUser['id'])) {
+            $this->telegram->sendMessage(
+                $chatId,
+                "❌ مالک اصلی قابل حذف نیست.",
+                $message['message_id'] ?? null
+            );
+            return;
+        }
+
+        // بررسی اینکه کاربر هدف ادمین است یا خیر
+        if (!$this->authManager->isAdmin($chatId, $targetUser['id'])) {
+            $username = $targetUser['username'] ? '@' . $targetUser['username'] : "کاربر با آیدی {$targetUser['id']}";
+            $this->telegram->sendMessage(
+                $chatId,
+                "⚠️ کاربر {$username} ادمین نیست.",
+                $message['message_id'] ?? null
+            );
+            return;
+        }
+
+        // حذف ادمین
+        $result = false;
+        $isMainAdmin = $this->authManager->isMainAdmin($chatId, $targetUser['id']);
+        
+        if ($isMainAdmin) {
+            $result = $this->adminManager->removeAdmin($chatId, $targetUser['id']);
         } else {
-            $targetUserId = $api->getUserIdFromReply($update);
-            if ($targetUserId === null) {
-                $api->sendMessage($chatId, $messages['provide_input'][$lang], $msgId);
-                return;
+            // ساب‌ادمین
+            $result = $this->adminManager->removeSubAdmin($chatId, $targetUser['id']);
+        }
+
+        if ($result) {
+            $username = $targetUser['username'] ? '@' . $targetUser['username'] : "کاربر با آیدی {$targetUser['id']}";
+            $this->telegram->sendMessage(
+                $chatId,
+                "✅ ادمین {$username} با موفقیت حذف شد.",
+                $message['message_id'] ?? null
+            );
+
+            $this->logger->info("Admin {$targetUser['id']} removed from group $chatId by $userId");
+        } else {
+            $this->telegram->sendMessage(
+                $chatId,
+                "❌ حذف ادمین با خطا مواجه شد. لطفاً دوباره تلاش کنید.",
+                $message['message_id'] ?? null
+            );
+
+            $this->logger->error("Failed to remove admin {$targetUser['id']} from group $chatId by $userId");
+        }
+    }
+
+    /**
+     * استخراج کاربر هدف از پیام یا پارامترها
+     * @return array|null ['id' => int, 'username' => string|null, 'first_name' => string|null, 'last_name' => string|null]
+     */
+    private function extractTargetUser(array $message, string $params): ?array
+    {
+        // 1. بررسی پارامترها
+        if (!empty($params)) {
+            $usernameOrId = trim($params);
+            
+            if (is_numeric($usernameOrId)) {
+                return [
+                    'id' => (int)$usernameOrId,
+                    'username' => null,
+                    'first_name' => null,
+                    'last_name' => null,
+                ];
+            }
+            
+            if (strpos($usernameOrId, '@') === 0) {
+                $chatMember = $this->telegram->getChatMember($message['chat']['id'], $usernameOrId);
+                if ($chatMember && isset($chatMember['user'])) {
+                    return [
+                        'id' => $chatMember['user']['id'],
+                        'username' => $chatMember['user']['username'] ?? null,
+                        'first_name' => $chatMember['user']['first_name'] ?? null,
+                        'last_name' => $chatMember['user']['last_name'] ?? null,
+                    ];
+                }
+                return null;
             }
         }
 
-        $currentUserId = $message['from']['id'] ?? null;
-        if ($targetUserId == $currentUserId) {
-            $api->sendMessage($chatId, $messages['cannot_remove_self'][$lang], $msgId);
-            return;
+        // 2. بررسی ریپلای
+        if (isset($message['reply_to_message']) && isset($message['reply_to_message']['from'])) {
+            $from = $message['reply_to_message']['from'];
+            return [
+                'id' => $from['id'],
+                'username' => $from['username'] ?? null,
+                'first_name' => $from['first_name'] ?? null,
+                'last_name' => $from['last_name'] ?? null,
+            ];
         }
 
-        if (!$this->adminManager->isAdminOfGroup($targetUserId, $chatId)) {
-            $api->sendMessage($chatId, $messages['not_admin'][$lang], $msgId);
-            return;
-        }
+        return null;
+    }
 
-        $success = $this->adminManager->removeAdmin($targetUserId, $chatId);
-        if ($success) {
-            $response = str_replace('{user}', $targetUserId, $messages['success'][$lang]);
-            $api->sendMessage($chatId, $response, $msgId);
-        } else {
-            $api->sendMessage($chatId, $messages['failed'][$lang], $msgId);
-        }
+    /**
+     * توضیحات ماژول
+     */
+    public static function getDescription(): string
+    {
+        return "حذف ادمین از گروه / Remove admin from group";
     }
 }

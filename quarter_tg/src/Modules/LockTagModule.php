@@ -1,18 +1,21 @@
 <?php
 
-namespace QuarterTg\Modules;
+namespace Modules;
 
-use QuarterTg\Core\ModuleManager;
-
-class LockTagModule extends ModuleManager
+class LockTagModule extends BaseLockModule
 {
-    public function execute($message, $params)
+    protected function getLockType(): string
     {
-        $chatId = $message['chat']['id'];
-        $this->lockManager->setLock($chatId, 'tag', true);
-        $this->telegramApi->sendMessage(
-            $chatId,
-            "🔒 قفل تگ فعال شد.\nکاربران عادی نمی‌توانند هیچ تگی (مانند @username) ارسال کنند."
-        );
+        return 'tag';
+    }
+
+    protected function getAction(): bool
+    {
+        return true;
+    }
+
+    public static function getDescription(): string
+    {
+        return "قفل تگ (منشن) / Lock tags (mentions)";
     }
 }

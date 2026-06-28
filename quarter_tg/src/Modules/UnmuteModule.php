@@ -2,80 +2,204 @@
 
 namespace Modules;
 
+use QuarterTg\Core\Database;
+use QuarterTg\Core\Logger;
+use QuarterTg\Helpers\TelegramApi;
+use QuarterTg\Core\AuthorizationManager;
+use QuarterTg\Core\MuteManager;
+
+/**
+ * ماژول رفع سکوت (آن‌میوت) کاربر در گروه
+ * فقط ادمین‌ها می‌توانند رفع سکوت کنند
+ */
 class UnmuteModule
 {
-    private $muteManager;
     private $telegram;
     private $db;
     private $logger;
+    private $authManager;
+    private $muteManager;
 
-    public function __construct($muteManager, $telegram, $db, $logger)
-    {
-        $this->muteManager = $muteManager;
+    public function __construct(
+        TelegramApi $telegram,
+        Database $db,
+        Logger $logger,
+        AuthorizationManager $authManager,
+        MuteManager $muteManager
+    ) {
         $this->telegram = $telegram;
         $this->db = $db;
         $this->logger = $logger;
+        $this->authManager = $authManager;
+        $this->muteManager = $muteManager;
     }
 
-    public function execute($message, $params)
+    /**
+     * اجرای ماژول
+     */
+    public function execute(array $message, string $params = '', int $chatId = 0, int $userId = 0): void
     {
-        $chat_id = $message['chat']['id'];
-        $from_id = $message['from']['id'];
+        if ($chatId === 0) {
+            $chatId = $message['chat']['id'] ?? 0;
+        }
+        if ($userId === 0) {
+            $userId = $message['from']['id'] ?? 0;
+        }
 
-        if (!$this->isGroupAdmin($chat_id, $from_id)) {
-            $this->telegram->sendMessage($chat_id, "⛔ شما اجازه اجرای این دستور را ندارید.");
+        // فقط ادمین‌ها می‌توانند رفع سکوت کنند
+        if (!$this->authManager->isAdmin($chatId, $userId)) {
+            $this->telegram->sendMessage(
+                $chatId,
+                "⛔ شما اجازه رفع سکوت کاربران را ندارید.",
+                $message['message_id'] ?? null
+            );
             return;
         }
 
-        $target_user = $this->getTargetUser($message);
-        if (!$target_user) {
-            $this->telegram->sendMessage($chat_id, "⚠️ لطفاً روی پیام کاربر ریپلای کنید یا نام کاربری/آیدی عددی را وارد کنید.\n⚠️ Please reply to user's message or enter username/numeric ID.");
+        // استخراج کاربر هدف
+        $targetUser = $this->extractTargetUser($message, $params);
+        if (!$targetUser) {
+            $this->telegram->sendMessage(
+                $chatId,
+                "❌ لطفاً یک کاربر را مشخص کنید.\n"
+                . "مثال: `/unmute @username` یا ریپلای به پیام کاربر",
+                $message['message_id'] ?? null
+            );
             return;
         }
 
-        $result = $this->muteManager->unmuteUser($chat_id, $target_user);
-        if ($result) {
-            $this->telegram->sendMessage($chat_id, "✅ سکوت کاربر برداشته شد.");
-            $this->logger->log("Unmute executed by $from_id on $target_user in group $chat_id");
-        } else {
-            $this->telegram->sendMessage($chat_id, "⚠️ این کاربر در حالت سکوت نیست.");
+        // بررسی اینکه کاربر سکوت شده است یا خیر
+        if (!$this->muteManager->isMuted($chatId, $targetUser['id'])) {
+            $username = $targetUser['username'] ? '@' . $targetUser['username'] : "کاربر با آیدی {$targetUser['id']}";
+            $this->telegram->sendMessage(
+                $chatId,
+                "⚠️ کاربر {$username} در لیست سکوت‌ها وجود ندارد.",
+                $message['message_id'] ?? null
+            );
+            return;
+        }
+
+        // انجام عملیات رفع سکوت
+        try {
+            $result = $this->muteManager->unmute($chatId, $targetUser['id']);
+
+            if ($result) {
+                $username = $targetUser['username'] ? '@' . $targetUser['username'] : "کاربر با آیدی {$targetUser['id']}";
+                $this->telegram->sendMessage(
+                    $chatId,
+                    "✅ رفع سکوت کاربر {$username} با موفقیت انجام شد.\n"
+                    . "🔓 کاربر می‌تواند دوباره پیام ارسال کند.",
+                    $message['message_id'] ?? null,
+                    'HTML'
+                );
+
+                $this->logger->info("User {$targetUser['id']} unmuted in group $chatId by $userId");
+            } else {
+                $this->telegram->sendMessage(
+                    $chatId,
+                    "❌ رفع سکوت کاربر با خطا مواجه شد. لطفاً دوباره تلاش کنید.",
+                    $message['message_id'] ?? null
+                );
+
+                $this->logger->error("Failed to unmute user {$targetUser['id']} in group $chatId by $userId");
+            }
+        } catch (\Exception $e) {
+            $this->telegram->sendMessage(
+                $chatId,
+                "❌ خطا در رفع سکوت کاربر: " . $e->getMessage(),
+                $message['message_id'] ?? null
+            );
+
+            $this->logger->error("Unmute exception: " . $e->getMessage());
         }
     }
 
-    private function getTargetUser($message)
+    /**
+     * استخراج کاربر هدف از پیام یا پارامترها
+     * @return array|null ['id' => int, 'username' => string|null, 'first_name' => string|null, 'last_name' => string|null]
+     */
+    private function extractTargetUser(array $message, string $params): ?array
     {
-        if (isset($message['reply_to_message']['from']['id'])) {
-            return $message['reply_to_message']['from']['id'];
-        }
-        $text = $message['text'] ?? '';
-        $parts = explode(' ', $text);
-        if (isset($parts[1])) {
-            $target = trim($parts[1]);
-            if (strpos($target, '@') === 0) {
-                $chat = $this->telegram->getChat($target);
-                if (isset($chat['id'])) {
-                    return $chat['id'];
+        // 1. بررسی پارامترها
+        if (!empty($params)) {
+            $usernameOrId = trim($params);
+            
+            if (is_numeric($usernameOrId)) {
+                return [
+                    'id' => (int)$usernameOrId,
+                    'username' => null,
+                    'first_name' => null,
+                    'last_name' => null,
+                ];
+            }
+            
+            if (strpos($usernameOrId, '@') === 0) {
+                try {
+                    $chatMember = $this->telegram->getChatMember($message['chat']['id'], $usernameOrId);
+                    if ($chatMember && isset($chatMember['user'])) {
+                        return [
+                            'id' => $chatMember['user']['id'],
+                            'username' => $chatMember['user']['username'] ?? null,
+                            'first_name' => $chatMember['user']['first_name'] ?? null,
+                            'last_name' => $chatMember['user']['last_name'] ?? null,
+                        ];
+                    }
+                } catch (\Exception $e) {
+                    // اگر کاربر در گروه نیست، اطلاعات را از دیتابیس می‌گیریم
+                    $userInfo = $this->getUserFromMutes($message['chat']['id'], $usernameOrId);
+                    if ($userInfo) {
+                        return $userInfo;
+                    }
                 }
-            } elseif (is_numeric($target)) {
-                return (int)$target;
+                return null;
             }
         }
+
+        // 2. بررسی ریپلای
+        if (isset($message['reply_to_message']) && isset($message['reply_to_message']['from'])) {
+            $from = $message['reply_to_message']['from'];
+            return [
+                'id' => $from['id'],
+                'username' => $from['username'] ?? null,
+                'first_name' => $from['first_name'] ?? null,
+                'last_name' => $from['last_name'] ?? null,
+            ];
+        }
+
         return null;
     }
 
-    private function isGroupAdmin($group_id, $user_id)
+    /**
+     * دریافت اطلاعات کاربر از جدول سکوت‌ها (در صورت عدم حضور در گروه)
+     */
+    private function getUserFromMutes(int $groupId, string $username): ?array
     {
-        $stmt = $this->db->prepare("SELECT id FROM bot_admins WHERE group_id = ? AND user_id = ?");
-        $stmt->bind_param("ii", $group_id, $user_id);
-        $stmt->execute();
-        $result = $stmt->get_result();
-        if ($result->num_rows > 0) {
-            return true;
+        // حذف @ از ابتدا
+        $cleanUsername = ltrim($username, '@');
+        
+        $sql = "SELECT user_id, username, first_name, last_name 
+                FROM bot_mutes 
+                WHERE group_id = ? AND username = ? 
+                LIMIT 1";
+        $result = $this->db->queryRow($sql, [$groupId, $cleanUsername]);
+        
+        if ($result) {
+            return [
+                'id' => $result['user_id'],
+                'username' => $result['username'] ?? null,
+                'first_name' => $result['first_name'] ?? null,
+                'last_name' => $result['last_name'] ?? null,
+            ];
         }
-        $stmt = $this->db->prepare("SELECT id FROM bot_sub_admins WHERE group_id = ? AND user_id = ?");
-        $stmt->bind_param("ii", $group_id, $user_id);
-        $stmt->execute();
-        $result = $stmt->get_result();
-        return $result->num_rows > 0;
+        
+        return null;
+    }
+
+    /**
+     * توضیحات ماژول
+     */
+    public static function getDescription(): string
+    {
+        return "رفع سکوت کاربر در گروه / Unmute user in group";
     }
 }
