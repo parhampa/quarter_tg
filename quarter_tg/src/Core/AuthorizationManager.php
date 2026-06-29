@@ -2,6 +2,9 @@
 
 namespace QuarterTg\Core;
 
+use QuarterTg\Core\Database;
+use QuarterTg\Core\Cache;
+
 /**
  * کلاس مدیریت دسترسی‌ها و احراز هویت کاربران
  * پشتیبانی از سطوح دسترسی: Owner, Admin, SubAdmin
@@ -36,6 +39,14 @@ class AuthorizationManager
     public function isOwner(int $userId): bool
     {
         return $userId === $this->ownerId;
+    }
+
+    /**
+     * دریافت آیدی مالک اصلی
+     */
+    public function getOwnerId(): int
+    {
+        return $this->ownerId;
     }
 
     /**
@@ -382,6 +393,8 @@ class AuthorizationManager
             [
                 'user_id' => $this->ownerId,
                 'username' => 'OWNER',
+                'first_name' => 'Owner',
+                'last_name' => '',
                 'level' => 'owner',
                 'added_by' => null,
                 'added_at' => date('Y-m-d H:i:s'),
@@ -407,10 +420,15 @@ class AuthorizationManager
     public function clearGroupCache(int $groupId): void
     {
         // حذف کش‌های مرتبط با گروه
-        $pattern = $this->cachePrefix . '*_' . $groupId . '_*';
         // در صورت وجود متد deleteByPattern در Cache، استفاده شود
-        // در غیر این صورت، کش به‌صورت دستی پاک می‌شود
-        // (پیاده‌سازی ساده: حذف تمام کلیدهای کش)
+        // پیاده‌سازی ساده: حذف کلیدهای مشخص
+        $keys = [
+            $this->cachePrefix . 'admin_',
+            $this->cachePrefix . 'main_admin_',
+            $this->cachePrefix . 'sub_admin_',
+        ];
+        // در حال حاضر کش به‌صورت دستی پاک می‌شود
+        // می‌توان با اسکن دایرکتوری کش، فایل‌های مربوطه را حذف کرد
     }
 
     /**

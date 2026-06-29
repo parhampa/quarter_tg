@@ -277,4 +277,12 @@ class Cache
     {
         $this->defaultTtl = $ttl;
     }
+
+    /**
+     * دریافت دایرکتوری کش
+     */
+    public function getCacheDir(): string
+    {
+        return $this->cacheDir;
+    }
 }

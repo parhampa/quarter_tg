@@ -1,0 +1,67 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<phpunit xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:noNamespaceSchemaLocation="https://schema.phpunit.de/9.5/phpunit.xsd"
+         bootstrap="tests/bootstrap.php"
+         colors="true"
+         verbose="true"
+         stopOnFailure="false"
+         cacheResultFile=".phpunit.cache/test-results">
+    <testsuites>
+        <testsuite name="Unit">
+            <directory>tests/Unit</directory>
+        </testsuite>
+        <testsuite name="Feature">
+            <directory>tests/Feature</directory>
+        </testsuite>
+        <testsuite name="Core">
+            <directory>tests/Core</directory>
+        </testsuite>
+        <testsuite name="Modules">
+            <directory>tests/Modules</directory>
+        </testsuite>
+    </testsuites>
+
+    <coverage>
+        <include>
+            <directory suffix=".php">src</directory>
+        </include>
+        <exclude>
+            <directory suffix=".php">src/Exceptions</directory>
+            <file>src/Helpers/LanguageHelper.php</file>
+        </exclude>
+        <report>
+            <html outputDirectory="coverage/"/>
+            <text outputFile="coverage/coverage.txt"/>
+            <clover outputFile="coverage/clover.xml"/>
+        </report>
+    </coverage>
+
+    <php>
+        <ini name="display_errors" value="1"/>
+        <ini name="error_reporting" value="E_ALL"/>
+        <env name="APP_ENV" value="testing"/>
+        <env name="PHPUNIT" value="true"/>
+        
+        <!-- تنظیمات دیتابیس تست -->
+        <env name="DB_HOST" value="localhost"/>
+        <env name="DB_NAME" value="quarter_tg_test"/>
+        <env name="DB_USER" value="root"/>
+        <env name="DB_PASSWORD" value=""/>
+        
+        <!-- تنظیمات ربات تست -->
+        <env name="BOT_TOKEN" value="test_bot_token"/>
+        <env name="OWNER_ID" value="123456789"/>
+        
+        <!-- تنظیمات کش تست -->
+        <env name="CACHE_ENABLED" value="false"/>
+        
+        <!-- تنظیمات لاگ تست -->
+        <env name="LOG_ENABLED" value="false"/>
+    </php>
+
+    <logging>
+        <junit outputFile=".phpunit.cache/junit.xml"/>
+        <testdoxHtml outputFile=".phpunit.cache/testdox.html"/>
+        <testdoxText outputFile=".phpunit.cache/testdox.txt"/>
+    </logging>
+</phpunit>

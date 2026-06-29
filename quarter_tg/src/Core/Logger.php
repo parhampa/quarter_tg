@@ -4,6 +4,7 @@ namespace QuarterTg\Core;
 
 /**
  * کلاس مدیریت لاگ‌گیری با پشتیبانی از چندین سطح و چرخش فایل
+ * سطوح پشتیبانی‌شده: debug, info, warning, error
  */
 class Logger
 {
@@ -339,6 +340,22 @@ class Logger
     public function setEnabled(bool $enabled): void
     {
         $this->enabled = $enabled;
+    }
+
+    /**
+     * بررسی فعال بودن لاگ
+     */
+    public function isEnabled(): bool
+    {
+        return $this->enabled;
+    }
+
+    /**
+     * دریافت مسیر فایل لاگ
+     */
+    public function getLogFile(): string
+    {
+        return $this->logFile;
     }
 
     /**

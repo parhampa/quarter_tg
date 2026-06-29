@@ -2,9 +2,15 @@
 
 namespace QuarterTg\Core;
 
+use QuarterTg\Core\Database;
+use QuarterTg\Core\Cache;
+use QuarterTg\Core\Logger;
+use QuarterTg\Helpers\TelegramApi;
+
 /**
  * کلاس مدیریت پیام خوش‌آمدگویی برای اعضای جدید
  * پشتیبانی از فعال/غیرفعال کردن، تنظیم پیام، و ارسال خودکار
+ * با قابلیت جایگزینی متغیرها: {first_name}, {last_name}, {username}, {full_name}, {mention}, {id}
  */
 class WelcomeManager
 {
@@ -305,5 +311,21 @@ class WelcomeManager
     public function setCacheTtl(int $ttl): void
     {
         $this->cacheTtl = $ttl;
+    }
+
+    /**
+     * دریافت Telegram API (برای استفاده در سایر کلاس‌ها)
+     */
+    public function getTelegram()
+    {
+        return $this->telegram;
+    }
+
+    /**
+     * دریافت Logger (برای استفاده در سایر کلاس‌ها)
+     */
+    public function getLogger()
+    {
+        return $this->logger;
     }
 }

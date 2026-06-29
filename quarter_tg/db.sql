@@ -200,8 +200,33 @@ CREATE TABLE `bot_clear_cooldown` (
 
 -- درج یک رکورد پیش‌فرض برای هر گروه جدید در جدول قفل‌ها
 -- این کار باعث می‌شود که لاک‌ها بدون خطا کار کنند
-INSERT INTO `bot_group_locks` (`group_id`, `lock_text`, `lock_photo`, `lock_video`, `lock_gif`, `lock_sticker`, `lock_voice`, `lock_video_note`, `lock_link`, `lock_tag`, `lock_hashtag`) 
-VALUES (0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0) 
-ON DUPLICATE KEY UPDATE `group_id` = `group_id`;
+INSERT INTO `bot_group_locks` (
+  `group_id`, 
+  `lock_text`, 
+  `lock_photo`, 
+  `lock_video`, 
+  `lock_gif`, 
+  `lock_sticker`, 
+  `lock_voice`, 
+  `lock_video_note`, 
+  `lock_link`, 
+  `lock_tag`, 
+  `lock_hashtag`
+) VALUES (
+  0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
+) ON DUPLICATE KEY UPDATE `group_id` = `group_id`;
+
+-- --------------------------------------------------------
+-- ایندکس‌های اضافی برای بهبود عملکرد (اختیاری)
+-- --------------------------------------------------------
+
+-- ایندکس برای جستجوی سریع‌تر در لاگ پیام‌ها
+ALTER TABLE `bot_messages` ADD INDEX `idx_sent_at` (`sent_at`);
+
+-- ایندکس برای جستجوی سریع‌تر در لاگ دستورات
+ALTER TABLE `bot_command_logs` ADD INDEX `idx_executed_at` (`executed_at`);
+
+-- ایندکس برای جستجوی سریع‌تر در جدول بن‌ها
+ALTER TABLE `bot_bans` ADD INDEX `idx_banned_at` (`banned_at`);
 
 COMMIT;

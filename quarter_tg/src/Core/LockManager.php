@@ -2,6 +2,9 @@
 
 namespace QuarterTg\Core;
 
+use QuarterTg\Core\Database;
+use QuarterTg\Core\Cache;
+
 /**
  * کلاس مدیریت قفل‌های محتوایی گروه
  * پشتیبانی از: text, photo, video, gif, sticker, voice, video_note, link, tag, hashtag
@@ -30,7 +33,7 @@ class LockManager
      */
     public function getLocks(int $groupId): array
     {
-        $cacheKey = $this->cachePrefix . $groupId;
+        $cacheKey = $this->cachePrefix . 'all_' . $groupId;
         $cached = $this->cache->get($cacheKey);
         if ($cached !== null) {
             return $cached;
@@ -67,8 +70,18 @@ class LockManager
             return false;
         }
 
+        // کش مخصوص هر نوع قفل
+        $cacheKey = $this->cachePrefix . $type . '_' . $groupId;
+        $cached = $this->cache->get($cacheKey);
+        if ($cached !== null) {
+            return (bool)$cached;
+        }
+
         $locks = $this->getLocks($groupId);
-        return isset($locks[$type]) && $locks[$type] == 1;
+        $status = isset($locks[$type]) && $locks[$type] == 1;
+        
+        $this->cache->set($cacheKey, $status, $this->cacheTtl);
+        return $status;
     }
 
     /**
@@ -85,11 +98,19 @@ class LockManager
         $sql = "UPDATE {$this->table} SET $column = ? WHERE group_id = ?";
         $result = $this->db->execute($sql, [(int)$status, $groupId]);
 
-        // پاک کردن کش
-        $cacheKey = $this->cachePrefix . $groupId;
-        $this->cache->delete($cacheKey);
+        // پاک کردن کش‌های مربوطه
+        $this->cache->delete($this->cachePrefix . 'all_' . $groupId);
+        $this->cache->delete($this->cachePrefix . $type . '_' . $groupId);
 
         return $result > 0;
+    }
+
+    /**
+     * دریافت نوع قفل (برای استفاده در BaseLockModule)
+     */
+    public function getLockType(string $type): string
+    {
+        return in_array($type, $this->lockTypes) ? $type : 'text';
     }
 
     /**
@@ -207,7 +228,15 @@ class LockManager
         foreach ($this->lockTypes as $type) {
             $data['lock_' . $type] = 1;
         }
-        return $this->db->update($this->table, $data, ['group_id' => $groupId]) > 0;
+        $result = $this->db->update($this->table, $data, ['group_id' => $groupId]);
+        
+        // پاک کردن کش
+        $this->cache->delete($this->cachePrefix . 'all_' . $groupId);
+        foreach ($this->lockTypes as $type) {
+            $this->cache->delete($this->cachePrefix . $type . '_' . $groupId);
+        }
+        
+        return $result > 0;
     }
 
     /**
@@ -219,7 +248,15 @@ class LockManager
         foreach ($this->lockTypes as $type) {
             $data['lock_' . $type] = 0;
         }
-        return $this->db->update($this->table, $data, ['group_id' => $groupId]) > 0;
+        $result = $this->db->update($this->table, $data, ['group_id' => $groupId]);
+        
+        // پاک کردن کش
+        $this->cache->delete($this->cachePrefix . 'all_' . $groupId);
+        foreach ($this->lockTypes as $type) {
+            $this->cache->delete($this->cachePrefix . $type . '_' . $groupId);
+        }
+        
+        return $result > 0;
     }
 
     /**
@@ -228,6 +265,14 @@ class LockManager
     public function getLockTypes(): array
     {
         return $this->lockTypes;
+    }
+
+    /**
+     * بررسی اینکه آیا نوع قفل معتبر است
+     */
+    public function isValidLockType(string $type): bool
+    {
+        return in_array($type, $this->lockTypes);
     }
 
     /**

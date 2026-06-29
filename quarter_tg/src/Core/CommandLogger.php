@@ -2,6 +2,9 @@
 
 namespace QuarterTg\Core;
 
+use QuarterTg\Core\Database;
+use QuarterTg\Core\Logger;
+
 /**
  * کلاس ثبت لاگ دستورات اجرا شده توسط ادمین‌ها
  * برای ممیزی، تحلیل و پیگیری اقدامات مدیران

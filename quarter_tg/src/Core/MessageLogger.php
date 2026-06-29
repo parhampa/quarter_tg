@@ -2,6 +2,9 @@
 
 namespace QuarterTg\Core;
 
+use QuarterTg\Core\Database;
+use QuarterTg\Core\Logger;
+
 /**
  * کلاس ثبت لاگ پیام‌های دریافتی در دیتابیس
  * برای ذخیره‌سازی و تحلیل بعدی پیام‌ها و همچنین امکان حذف پیام‌های کاربر

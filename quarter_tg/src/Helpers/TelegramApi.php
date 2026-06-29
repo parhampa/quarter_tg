@@ -1,12 +1,21 @@
 <?php
 
-namespace Helpers;
+namespace QuarterTg\Helpers;
 
+/**
+ * کلاس ارتباط با Telegram Bot API
+ * با پشتیبانی از متدهای رایج و مدیریت خطا
+ */
 class TelegramApi
 {
     private $token;
     private $baseUrl;
+    private $timeout = 10;
+    private $lastError = null;
 
+    /**
+     * @param string $token توکن ربات از @BotFather
+     */
     public function __construct(string $token)
     {
         $this->token = $token;
@@ -14,44 +23,80 @@ class TelegramApi
     }
 
     /**
-     * ارسال درخواست به API تلگرام
+     * ارسال درخواست به API تلگرام با استفاده از cURL
+     * @param string $method نام متد API
+     * @param array $params پارامترهای درخواست
+     * @return array|null پاسخ API (در صورت موفقیت)
      */
     public function request(string $method, array $params = []): ?array
     {
         $url = $this->baseUrl . $method;
-        $options = [
-            'http' => [
-                'header'  => "Content-Type: application/x-www-form-urlencoded\r\n",
-                'method'  => 'POST',
-                'content' => http_build_query($params),
-                'timeout' => 10,
-            ],
-        ];
-        $context = stream_context_create($options);
-        $response = @file_get_contents($url, false, $context);
+        $ch = curl_init();
+
+        curl_setopt($ch, CURLOPT_URL, $url);
+        curl_setopt($ch, CURLOPT_POST, true);
+        curl_setopt($ch, CURLOPT_POSTFIELDS, http_build_query($params));
+        curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+        curl_setopt($ch, CURLOPT_TIMEOUT, $this->timeout);
+        curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, true);
+        curl_setopt($ch, CURLOPT_HTTPHEADER, [
+            'Content-Type: application/x-www-form-urlencoded',
+        ]);
+
+        $response = curl_exec($ch);
+        $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+        $error = curl_error($ch);
+        curl_close($ch);
+
         if ($response === false) {
+            $this->lastError = "cURL error: $error";
             return null;
         }
+
+        if ($httpCode !== 200) {
+            $this->lastError = "HTTP error: $httpCode";
+            return null;
+        }
+
         $data = json_decode($response, true);
-        return $data && $data['ok'] ? $data : null;
+        if ($data === null) {
+            $this->lastError = "Invalid JSON response";
+            return null;
+        }
+
+        if (!isset($data['ok']) || $data['ok'] !== true) {
+            $this->lastError = $data['description'] ?? 'Unknown API error';
+            return null;
+        }
+
+        $this->lastError = null;
+        return $data;
     }
 
     /**
      * ارسال پیام متنی
      */
-    public function sendMessage(int|string $chatId, string $text, int $replyToMessageId = null, string $parseMode = 'HTML', array $replyMarkup = null): ?array
-    {
+    public function sendMessage(
+        int|string $chatId,
+        string $text,
+        ?int $replyToMessageId = null,
+        string $parseMode = 'HTML',
+        ?array $replyMarkup = null
+    ): ?array {
         $params = [
             'chat_id' => $chatId,
-            'text'    => $text,
+            'text' => $text,
             'parse_mode' => $parseMode,
         ];
+
         if ($replyToMessageId) {
             $params['reply_to_message_id'] = $replyToMessageId;
         }
+
         if ($replyMarkup) {
             $params['reply_markup'] = json_encode($replyMarkup);
         }
+
         return $this->request('sendMessage', $params);
     }
 
@@ -61,7 +106,7 @@ class TelegramApi
     public function deleteMessage(int|string $chatId, int $messageId): ?array
     {
         return $this->request('deleteMessage', [
-            'chat_id'    => $chatId,
+            'chat_id' => $chatId,
             'message_id' => $messageId,
         ]);
     }
@@ -69,11 +114,14 @@ class TelegramApi
     /**
      * پین کردن پیام
      */
-    public function pinChatMessage(int|string $chatId, int $messageId, bool $disableNotification = false): ?array
-    {
+    public function pinChatMessage(
+        int|string $chatId,
+        int $messageId,
+        bool $disableNotification = false
+    ): ?array {
         return $this->request('pinChatMessage', [
-            'chat_id'              => $chatId,
-            'message_id'           => $messageId,
+            'chat_id' => $chatId,
+            'message_id' => $messageId,
             'disable_notification' => $disableNotification,
         ]);
     }
@@ -81,7 +129,7 @@ class TelegramApi
     /**
      * برداشتن پین
      */
-    public function unpinChatMessage(int|string $chatId, int $messageId = null): ?array
+    public function unpinChatMessage(int|string $chatId, ?int $messageId = null): ?array
     {
         $params = ['chat_id' => $chatId];
         if ($messageId) {
@@ -93,7 +141,7 @@ class TelegramApi
     /**
      * دریافت اطلاعات یک عضو گروه
      */
-    public function getChatMember(int|string $chatId, int $userId): ?array
+    public function getChatMember(int|string $chatId, int|string $userId): ?array
     {
         $result = $this->request('getChatMember', [
             'chat_id' => $chatId,
@@ -109,6 +157,89 @@ class TelegramApi
     {
         $result = $this->request('getChat', ['chat_id' => $chatId]);
         return $result ? $result['result'] : null;
+    }
+
+    /**
+     * دریافت اطلاعات ربات (getMe)
+     */
+    public function getMe(): ?array
+    {
+        $result = $this->request('getMe', []);
+        return $result ? $result['result'] : null;
+    }
+
+    /**
+     * بن کردن کاربر (اخراج از گروه)
+     */
+    public function banChatMember(
+        int|string $chatId,
+        int $userId,
+        ?int $untilDate = null,
+        bool $revokeMessages = true
+    ): ?array {
+        $params = [
+            'chat_id' => $chatId,
+            'user_id' => $userId,
+            'revoke_messages' => $revokeMessages,
+        ];
+        if ($untilDate) {
+            $params['until_date'] = $untilDate;
+        }
+        return $this->request('banChatMember', $params);
+    }
+
+    /**
+     * رفع بن کاربر
+     */
+    public function unbanChatMember(
+        int|string $chatId,
+        int $userId,
+        bool $onlyIfBanned = true
+    ): ?array {
+        return $this->request('unbanChatMember', [
+            'chat_id' => $chatId,
+            'user_id' => $userId,
+            'only_if_banned' => $onlyIfBanned,
+        ]);
+    }
+
+    /**
+     * محدود کردن کاربر (برای میوت)
+     */
+    public function restrictChatMember(
+        int|string $chatId,
+        int $userId,
+        array $permissions,
+        ?int $untilDate = null
+    ): ?array {
+        $params = [
+            'chat_id' => $chatId,
+            'user_id' => $userId,
+            'permissions' => json_encode($permissions),
+        ];
+        if ($untilDate) {
+            $params['until_date'] = $untilDate;
+        }
+        return $this->request('restrictChatMember', $params);
+    }
+
+    /**
+     * ارسال وضعیت تایپ یا آپلود
+     */
+    public function sendChatAction(int|string $chatId, string $action): ?array
+    {
+        return $this->request('sendChatAction', [
+            'chat_id' => $chatId,
+            'action' => $action,
+        ]);
+    }
+
+    /**
+     * پاسخ به Callback Query
+     */
+    public function answerCallbackQuery(array $params): ?array
+    {
+        return $this->request('answerCallbackQuery', $params);
     }
 
     /**
@@ -150,73 +281,7 @@ class TelegramApi
     }
 
     /**
-     * بن کردن کاربر (اخراج از گروه)
-     */
-    public function banChatMember(int|string $chatId, int $userId, int $untilDate = null, bool $revokeMessages = true): ?array
-    {
-        $params = [
-            'chat_id'         => $chatId,
-            'user_id'         => $userId,
-            'revoke_messages' => $revokeMessages,
-        ];
-        if ($untilDate) {
-            $params['until_date'] = $untilDate;
-        }
-        return $this->request('banChatMember', $params);
-    }
-
-    /**
-     * رفع بن کاربر
-     */
-    public function unbanChatMember(int|string $chatId, int $userId, bool $onlyIfBanned = true): ?array
-    {
-        return $this->request('unbanChatMember', [
-            'chat_id'       => $chatId,
-            'user_id'       => $userId,
-            'only_if_banned' => $onlyIfBanned,
-        ]);
-    }
-
-    /**
-     * محدود کردن کاربر (مثلاً برای میوت)
-     */
-    public function restrictChatMember(int|string $chatId, int $userId, array $permissions, int $untilDate = null): ?array
-    {
-        $params = [
-            'chat_id'     => $chatId,
-            'user_id'     => $userId,
-            'permissions' => json_encode($permissions),
-        ];
-        if ($untilDate) {
-            $params['until_date'] = $untilDate;
-        }
-        return $this->request('restrictChatMember', $params);
-    }
-
-    /**
-     * ارسال وضعیت تایپ یا آپلود
-     */
-    public function sendChatAction(int|string $chatId, string $action): ?array
-    {
-        return $this->request('sendChatAction', [
-            'chat_id' => $chatId,
-            'action'  => $action,
-        ]);
-    }
-
-    /**
-     * ارسال پیام با دکمه‌های اینلاین (اختیاری)
-     */
-    public function sendMessageWithInlineKeyboard(int|string $chatId, string $text, array $keyboard, int $replyToMessageId = null): ?array
-    {
-        $replyMarkup = [
-            'inline_keyboard' => $keyboard,
-        ];
-        return $this->sendMessage($chatId, $text, $replyToMessageId, 'HTML', $replyMarkup);
-    }
-
-    /**
-     * دریافت فایل (برای دانلود عکس/فیلم/...)
+     * دریافت فایل
      */
     public function getFile(string $fileId): ?array
     {
@@ -237,14 +302,40 @@ class TelegramApi
     }
 
     /**
-     * ارسال پیام به چند کاربر (برای اطلاع‌رسانی همگانی)
+     * ارسال پیام با دکمه‌های اینلاین
      */
-    public function sendMessageToMultiple(array $chatIds, string $text, string $parseMode = 'HTML'): array
+    public function sendMessageWithInlineKeyboard(
+        int|string $chatId,
+        string $text,
+        array $keyboard,
+        ?int $replyToMessageId = null,
+        string $parseMode = 'HTML'
+    ): ?array {
+        $replyMarkup = ['inline_keyboard' => $keyboard];
+        return $this->sendMessage($chatId, $text, $replyToMessageId, $parseMode, $replyMarkup);
+    }
+
+    /**
+     * دریافت آخرین خطا
+     */
+    public function getLastError(): ?string
     {
-        $results = [];
-        foreach ($chatIds as $chatId) {
-            $results[$chatId] = $this->sendMessage($chatId, $text, null, $parseMode);
-        }
-        return $results;
+        return $this->lastError;
+    }
+
+    /**
+     * تنظیم Timeout درخواست‌ها
+     */
+    public function setTimeout(int $seconds): void
+    {
+        $this->timeout = $seconds;
+    }
+
+    /**
+     * دریافت توکن ربات (برای استفاده در سایر کلاس‌ها)
+     */
+    public function getToken(): string
+    {
+        return $this->token;
     }
 }

@@ -8,6 +8,7 @@ use QuarterTg\Helpers\LanguageHelper;
 /**
  * کلاس اصلی ربات
  * تمام منطق پردازش پیام‌ها، قفل‌ها، دستورات و رویدادها در اینجا یکپارچه شده است
+ * با پشتیبانی کامل از قفل هشتگ و سیستم ترجمه
  */
 class Bot
 {
@@ -24,6 +25,7 @@ class Bot
     private $database;
     private $cache;
     private $logger;
+    private $langHelper;
     private $config;
 
     public function __construct($config, $database, $cache, $logger)
@@ -33,31 +35,41 @@ class Bot
         $this->cache = $cache;
         $this->logger = $logger;
 
+        // ایجاد LanguageHelper با زبان پیش‌فرض از config
+        $this->langHelper = new LanguageHelper($config['default_language'] ?? 'fa');
+
         $this->telegramApi = new TelegramApi($config['bot_token']);
         $this->lockManager = new LockManager($database, $cache);
         $this->muteManager = new MuteManager($database, $cache);
-        $this->warningManager = new WarningManager($database, $cache);
-        $this->authorizationManager = new AuthorizationManager($database, $cache, $config['owner_id']);
-        $this->adminManager = new AdminManager($database, $cache);
-        $this->welcomeManager = new WelcomeManager($database, $cache);
-        $this->messageLogger = new MessageLogger($database);
-        $this->commandLogger = new CommandLogger($database);
-        
-        // تنظیم وابستگی‌های مورد نیاز برای مدیران
         $this->muteManager->setTelegram($this->telegramApi);
         $this->muteManager->setLogger($this->logger);
+        
+        $this->warningManager = new WarningManager($database, $cache);
         $this->warningManager->setTelegram($this->telegramApi);
         $this->warningManager->setLogger($this->logger);
+        
+        $this->authorizationManager = new AuthorizationManager($database, $cache, $config['owner_id']);
+        $this->adminManager = new AdminManager($database, $cache);
+        $this->adminManager->setLogger($this->logger);
+        
+        $this->welcomeManager = new WelcomeManager($database, $cache);
         $this->welcomeManager->setTelegram($this->telegramApi);
         $this->welcomeManager->setLogger($this->logger);
         
-        // ModuleManager
+        $this->messageLogger = new MessageLogger($database);
+        $this->messageLogger->setLogger($this->logger);
+        
+        $this->commandLogger = new CommandLogger($database);
+        $this->commandLogger->setLogger($this->logger);
+
+        // ModuleManager با وابستگی‌های کامل
         $this->moduleManager = new ModuleManager(
             $config['command_map'],
             [
                 'telegram' => $this->telegramApi,
                 'db' => $this->database,
                 'logger' => $this->logger,
+                'langHelper' => $this->langHelper,
                 'lockManager' => $this->lockManager,
                 'muteManager' => $this->muteManager,
                 'warningManager' => $this->warningManager,
@@ -76,11 +88,13 @@ class Bot
      */
     public function handleRequest($update)
     {
+        // پردازش callback_query در صورت وجود
+        if (isset($update['callback_query'])) {
+            $this->handleCallback($update['callback_query']);
+            return;
+        }
+
         if (!isset($update['message'])) {
-            // پردازش callback_query در صورت نیاز
-            if (isset($update['callback_query'])) {
-                $this->handleCallback($update['callback_query']);
-            }
             return;
         }
 
@@ -91,6 +105,10 @@ class Bot
         // لاگ کردن پیام
         $this->messageLogger->log($message);
 
+        // تشخیص زبان برای پیام‌های پاسخ
+        $text = $message['text'] ?? '';
+        $lang = $this->langHelper->detectLanguageFromCommand($text);
+
         // بررسی سکوت کاربر
         if ($this->muteManager->isMuted($chatId, $userId)) {
             $this->telegramApi->deleteMessage($chatId, $message['message_id']);
@@ -98,14 +116,13 @@ class Bot
         }
 
         // بررسی قفل‌های گروه
-        if ($this->checkLocks($message)) {
+        if ($this->checkLocks($message, $lang)) {
             return; // پیام قفل شده و حذف گردید
         }
 
         // پردازش دستورات (Command)
-        $text = $message['text'] ?? '';
         if (strpos($text, '/') === 0 || $this->isPersianCommand($text)) {
-            $this->processCommand($message);
+            $this->processCommand($message, $lang);
             return;
         }
 
@@ -118,7 +135,7 @@ class Bot
     /**
      * بررسی قفل‌های فعال گروه
      */
-    private function checkLocks($message)
+    private function checkLocks($message, string $lang = 'fa'): bool
     {
         $chatId = $message['chat']['id'];
         $messageId = $message['message_id'];
@@ -130,40 +147,48 @@ class Bot
         }
 
         $locked = false;
+        $lockType = '';
 
         // قفل متن
         if (isset($message['text']) && $this->lockManager->isLocked($chatId, 'text')) {
             $locked = true;
+            $lockType = 'text';
         }
 
         // قفل عکس
         elseif (isset($message['photo']) && $this->lockManager->isLocked($chatId, 'photo')) {
             $locked = true;
+            $lockType = 'photo';
         }
 
         // قفل فیلم
         elseif (isset($message['video']) && $this->lockManager->isLocked($chatId, 'video')) {
             $locked = true;
+            $lockType = 'video';
         }
 
         // قفل GIF
         elseif (isset($message['animation']) && $this->lockManager->isLocked($chatId, 'gif')) {
             $locked = true;
+            $lockType = 'gif';
         }
 
         // قفل استیکر
         elseif (isset($message['sticker']) && $this->lockManager->isLocked($chatId, 'sticker')) {
             $locked = true;
+            $lockType = 'sticker';
         }
 
         // قفل ویس
         elseif (isset($message['voice']) && $this->lockManager->isLocked($chatId, 'voice')) {
             $locked = true;
+            $lockType = 'voice';
         }
 
         // قفل ویدئو مسیج
         elseif (isset($message['video_note']) && $this->lockManager->isLocked($chatId, 'video_note')) {
             $locked = true;
+            $lockType = 'video_note';
         }
 
         // قفل لینک
@@ -171,6 +196,7 @@ class Bot
             $text = $message['text'] ?? '';
             if ($this->containsLink($text)) {
                 $locked = true;
+                $lockType = 'link';
             }
         }
 
@@ -179,27 +205,42 @@ class Bot
             $text = $message['text'] ?? '';
             if ($this->containsTag($text)) {
                 $locked = true;
+                $lockType = 'tag';
             }
         }
 
-        // قفل هشتگ
+        // ✅ قفل هشتگ (جدید)
         if (!$locked && isset($message['text']) && $this->lockManager->isLocked($chatId, 'hashtag')) {
             $text = $message['text'] ?? '';
             if ($this->containsHashtag($text)) {
                 $locked = true;
+                $lockType = 'hashtag';
             }
         }
 
         if ($locked) {
             // حذف پیام
             $this->telegramApi->deleteMessage($chatId, $messageId);
-            // اطلاع به کاربر
-            $this->telegramApi->sendMessage(
-                $chatId,
-                "⛔ ارسال این نوع محتوا در گروه ممنوع است.",
-                $messageId
-            );
-            $this->logger->info("Locked message deleted in chat $chatId from user $userId");
+            
+            // ارسال پیام هشدار
+            $typeNames = [
+                'text' => $this->langHelper->t('text', [], $lang),
+                'photo' => $this->langHelper->t('photo', [], $lang),
+                'video' => $this->langHelper->t('video', [], $lang),
+                'gif' => $this->langHelper->t('gif', [], $lang),
+                'sticker' => $this->langHelper->t('sticker', [], $lang),
+                'voice' => $this->langHelper->t('voice', [], $lang),
+                'video_note' => $this->langHelper->t('video_note', [], $lang),
+                'link' => $this->langHelper->t('link', [], $lang),
+                'tag' => $this->langHelper->t('tag', [], $lang),
+                'hashtag' => $this->langHelper->t('hashtag', [], $lang),
+            ];
+            
+            $typeName = $typeNames[$lockType] ?? $lockType;
+            $warningText = $this->langHelper->t('content_locked', ['{type}' => $typeName], $lang);
+            
+            $this->telegramApi->sendMessage($chatId, $warningText, $messageId);
+            $this->logger->info("Locked message ($lockType) deleted in chat $chatId from user $userId");
             return true;
         }
 
@@ -209,7 +250,7 @@ class Bot
     /**
      * بررسی وجود لینک در متن
      */
-    private function containsLink($text)
+    private function containsLink($text): bool
     {
         if (empty($text)) {
             return false;
@@ -221,7 +262,7 @@ class Bot
     /**
      * بررسی وجود تگ (منشن) در متن
      */
-    private function containsTag($text)
+    private function containsTag($text): bool
     {
         if (empty($text)) {
             return false;
@@ -231,9 +272,9 @@ class Bot
     }
 
     /**
-     * بررسی وجود هشتگ در متن
+     * بررسی وجود هشتگ در متن (پشتیبانی از فارسی)
      */
-    private function containsHashtag($text)
+    private function containsHashtag($text): bool
     {
         if (empty($text)) {
             return false;
@@ -245,7 +286,7 @@ class Bot
     /**
      * تشخیص دستور فارسی
      */
-    private function isPersianCommand($text)
+    private function isPersianCommand($text): bool
     {
         $persianCommands = array_keys($this->config['command_map']);
         foreach ($persianCommands as $cmd) {
@@ -259,7 +300,7 @@ class Bot
     /**
      * پردازش دستور دریافتی
      */
-    private function processCommand($message)
+    private function processCommand($message, string $lang = 'fa'): void
     {
         $text = $message['text'] ?? '';
         $chatId = $message['chat']['id'];
@@ -270,11 +311,11 @@ class Bot
         $command = $parts[0];
         $params = $parts[1] ?? '';
 
-        // بررسی مجوز دستور (فقط برای ادمین‌ها)
+        // بررسی مجوز دستور
         if (!$this->authorizationManager->canExecute($chatId, $userId, $command)) {
             $this->telegramApi->sendMessage(
                 $chatId,
-                "⛔ شما دسترسی به این دستور را ندارید."
+                $this->langHelper->t('no_permission', [], $lang)
             );
             return;
         }
@@ -289,17 +330,25 @@ class Bot
     /**
      * پردازش Callback Query (برای دکمه‌های اینلاین)
      */
-    private function handleCallback($callback)
+    private function handleCallback($callback): void
     {
-        // در صورت نیاز به مدیریت دکمه‌ها
+        $callbackId = $callback['id'];
+        $chatId = $callback['message']['chat']['id'] ?? 0;
+        $userId = $callback['from']['id'] ?? 0;
+        $data = $callback['data'] ?? '';
+
+        // پردازش داده‌های callback
+        $this->logger->debug("Callback received: $data from user $userId");
+
+        // پاسخ به callback
         $this->telegramApi->answerCallbackQuery([
-            'callback_query_id' => $callback['id'],
-            'text' => 'عملیات با موفقیت انجام شد.'
+            'callback_query_id' => $callbackId,
+            'text' => $this->langHelper->t('operation_success', [], 'fa'),
         ]);
     }
 
     // ========================
-    // متدهای Getter برای دسترسی سایر کلاس‌ها (در صورت نیاز)
+    // متدهای Getter برای دسترسی سایر کلاس‌ها
     // ========================
 
     public function getTelegramApi()
@@ -360,6 +409,11 @@ class Bot
     public function getLogger()
     {
         return $this->logger;
+    }
+
+    public function getLangHelper()
+    {
+        return $this->langHelper;
     }
 
     public function getConfig()

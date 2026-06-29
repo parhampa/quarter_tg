@@ -2,21 +2,27 @@
 
 namespace QuarterTg\Core;
 
+use QuarterTg\Core\Database;
+use QuarterTg\Core\Cache;
+use QuarterTg\Core\Logger;
+use QuarterTg\Helpers\TelegramApi;
+
 /**
  * کلاس مدیریت بارگذاری و اجرای ماژول‌ها
  * ماژول‌ها به‌صورت پویا بر اساس command_map بارگذاری می‌شوند
+ * با قابلیت تزریق وابستگی‌ها از طریق Reflection
  */
 class ModuleManager
 {
     private $commandMap;
-    private $modules = [];
     private $dependencies = [];
+    private $modules = [];
     private $moduleNamespace = 'Modules\\';
     private $loadedModules = [];
 
     /**
      * @param array $commandMap آرایه نگاشت دستورات به نام ماژول‌ها
-     * @param array $dependencies وابستگی‌های اولیه
+     * @param array $dependencies وابستگی‌های اولیه (آرایه‌ای از اشیاء)
      */
     public function __construct(array $commandMap, array $dependencies = [])
     {
@@ -67,7 +73,7 @@ class ModuleManager
     }
 
     /**
-     * بارگذاری یک ماژول
+     * بارگذاری یک ماژول با تزریق وابستگی‌ها
      * @return object|null
      */
     public function loadModule(string $moduleName)
@@ -104,39 +110,44 @@ class ModuleManager
             foreach ($params as $param) {
                 $paramType = $param->getType();
                 $paramName = $param->getName();
+                $paramClass = null;
                 
-                // اگر نوع مشخص شده باشد
+                // دریافت نام کلاس از نوع پارامتر
                 if ($paramType && !$paramType->isBuiltin()) {
-                    $typeName = $paramType->getName();
-                    // جستجو در وابستگی‌ها بر اساس نام کلاس
-                    $found = false;
+                    $paramClass = $paramType->getName();
+                }
+                
+                $found = false;
+                
+                // ۱. جستجو بر اساس نوع (کلاس)
+                if ($paramClass) {
                     foreach ($this->dependencies as $name => $dependency) {
-                        if (is_object($dependency) && $dependency instanceof $typeName) {
+                        if (is_object($dependency) && $dependency instanceof $paramClass) {
                             $args[] = $dependency;
                             $found = true;
                             break;
                         }
                     }
-                    if (!$found) {
+                }
+                
+                // ۲. جستجو بر اساس نام پارامتر
+                if (!$found && isset($this->dependencies[$paramName])) {
+                    $args[] = $this->dependencies[$paramName];
+                    $found = true;
+                }
+                
+                // ۳. اگر پیدا نشد، مقدار پیش‌فرض یا null
+                if (!$found) {
+                    if ($param->isDefaultValueAvailable()) {
+                        $args[] = $param->getDefaultValue();
+                    } else {
                         // تلاش برای ساخت خودکار
-                        try {
-                            if (class_exists($typeName)) {
-                                $args[] = new $typeName();
-                            } else {
+                        if ($paramClass && class_exists($paramClass)) {
+                            try {
+                                $args[] = new $paramClass();
+                            } catch (\Exception $e) {
                                 $args[] = null;
                             }
-                        } catch (\Exception $e) {
-                            $args[] = null;
-                        }
-                    }
-                } else {
-                    // پارامتر بدون نوع یا نوع ساده – جستجو بر اساس نام
-                    if (isset($this->dependencies[$paramName])) {
-                        $args[] = $this->dependencies[$paramName];
-                    } else {
-                        // مقدار پیش‌فرض در صورت وجود
-                        if ($param->isDefaultValueAvailable()) {
-                            $args[] = $param->getDefaultValue();
                         } else {
                             $args[] = null;
                         }
@@ -177,31 +188,43 @@ class ModuleManager
         $message = $update['message'] ?? [];
         $args = [];
 
-        // اگر متد execute دو پارامتر دارد (message, params)
+        // تشخیص تعداد پارامترهای متد execute
         $reflection = new \ReflectionMethod($module, 'execute');
         $paramCount = $reflection->getNumberOfParameters();
+        $paramNames = [];
+        foreach ($reflection->getParameters() as $param) {
+            $paramNames[] = $param->getName();
+        }
 
-        if ($paramCount === 1) {
-            // فقط message
-            $args[] = $message;
-        } elseif ($paramCount === 2) {
-            // message و params
-            $args[] = $message;
-            $args[] = $params;
-        } elseif ($paramCount === 3) {
-            // message, params, chatId
-            $args[] = $message;
-            $args[] = $params;
-            $args[] = $chatId;
-        } elseif ($paramCount === 4) {
-            // message, params, chatId, userId
-            $args[] = $message;
-            $args[] = $params;
-            $args[] = $chatId;
-            $args[] = $userId;
-        } else {
-            // در غیر این صورت، کل update را ارسال می‌کنیم
-            $args[] = $update;
+        // تخصیص آرگومان‌ها بر اساس نام پارامترها
+        $argMap = [
+            'message' => $message,
+            'params'  => $params,
+            'chatId'  => $chatId,
+            'userId'  => $userId,
+            'update'  => $update,
+        ];
+
+        for ($i = 0; $i < $paramCount; $i++) {
+            $name = $paramNames[$i] ?? null;
+            if ($name && isset($argMap[$name])) {
+                $args[] = $argMap[$name];
+            } elseif ($i === 0) {
+                // اگر اولین پارامتر است، message را ارسال کن
+                $args[] = $message;
+            } elseif ($i === 1) {
+                // اگر دومین پارامتر است، params را ارسال کن
+                $args[] = $params;
+            } elseif ($i === 2) {
+                // اگر سومین پارامتر است، chatId را ارسال کن
+                $args[] = $chatId;
+            } elseif ($i === 3) {
+                // اگر چهارمین پارامتر است، userId را ارسال کن
+                $args[] = $userId;
+            } else {
+                // در غیر این صورت، کل update را ارسال می‌کنیم
+                $args[] = $update;
+            }
         }
 
         return $module->execute(...$args);
@@ -273,5 +296,21 @@ class ModuleManager
     public function getCommandMap(): array
     {
         return $this->commandMap;
+    }
+
+    /**
+     * اضافه کردن یک دستور جدید به نگاشت (در زمان اجرا)
+     */
+    public function addCommand(string $command, string $moduleName): void
+    {
+        $this->commandMap[$command] = $moduleName;
+    }
+
+    /**
+     * حذف یک دستور از نگاشت
+     */
+    public function removeCommand(string $command): void
+    {
+        unset($this->commandMap[$command]);
     }
 }

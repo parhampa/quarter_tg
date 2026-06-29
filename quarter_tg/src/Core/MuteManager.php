@@ -2,6 +2,11 @@
 
 namespace QuarterTg\Core;
 
+use QuarterTg\Core\Database;
+use QuarterTg\Core\Cache;
+use QuarterTg\Core\Logger;
+use QuarterTg\Helpers\TelegramApi;
+
 /**
  * کلاس مدیریت میوت (سکوت) کاربران در گروه
  * پشتیبانی از میوت دائمی و موقت با قابلیت بررسی خودکار انقضا
@@ -215,8 +220,7 @@ class MuteManager
         }
 
         try {
-            // دریافت ۵۰ پیام آخر کاربر از دیتابیس یا از API
-            // اینجا یک نمونه ساده با فرض اینکه دیتابیس پیام‌ها را ذخیره می‌کند
+            // دریافت ۵۰ پیام آخر کاربر از دیتابیس
             $sql = "SELECT message_id FROM bot_messages 
                     WHERE group_id = ? AND user_id = ? 
                     ORDER BY sent_at DESC LIMIT 50";
@@ -321,5 +325,21 @@ class MuteManager
     public function setCacheTtl(int $ttl): void
     {
         $this->cacheTtl = $ttl;
+    }
+
+    /**
+     * دریافت Telegram API
+     */
+    public function getTelegram()
+    {
+        return $this->telegram;
+    }
+
+    /**
+     * دریافت Logger
+     */
+    public function getLogger()
+    {
+        return $this->logger;
     }
 }

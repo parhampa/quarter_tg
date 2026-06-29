@@ -2,6 +2,10 @@
 
 namespace QuarterTg\Core;
 
+use QuarterTg\Core\Database;
+use QuarterTg\Core\Cache;
+use QuarterTg\Core\Logger;
+
 /**
  * کلاس مدیریت اختصاصی ادمین‌ها
  * شامل عملیات افزودن، حذف، لیست کردن و مدیریت سطوح دسترسی
@@ -459,8 +463,6 @@ class AdminManager
      */
     public function clearAllCache(int $groupId): void
     {
-        // در صورت وجود متد deleteByPattern در Cache، استفاده شود
-        // پیاده‌سازی ساده: حذف کلیدهای مشخص
         $keys = [
             $this->cachePrefix . 'admins_list_' . $groupId,
             $this->cachePrefix . 'subadmins_list_' . $groupId,
