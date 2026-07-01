@@ -6,15 +6,9 @@ namespace QuarterTg\Core\Middleware;
 
 use QuarterTg\Core\Config;
 use QuarterTg\Core\Logger;
-use QuarterTg\Helpers\ValidationHelper;
 
 /**
- * Middleware احراز هویت Webhook
- * 
- * وظایف:
- * - بررسی Webhook Secret
- * - بررسی IP مجاز (در صورت تنظیم)
- * - مدیریت خطاهای احراز هویت
+ * میدلور احراز هویت Webhook
  */
 class AuthMiddleware
 {
@@ -27,12 +21,8 @@ class AuthMiddleware
         $this->logger = $logger;
     }
 
-    /**
-     * اجرای Middleware
-     */
     public function handle(array $update, $app): void
     {
-        // 1. بررسی Webhook Secret
         $webhookSecret = $this->config->get('webhook.secret', '');
         if (!empty($webhookSecret)) {
             $receivedSecret = $_SERVER['HTTP_X_TELEGRAM_WEBHOOK_SECRET'] ?? $_GET['secret'] ?? '';
@@ -46,7 +36,6 @@ class AuthMiddleware
             }
         }
 
-        // 2. بررسی IP کلاینت
         $allowedIps = $this->config->get('webhook.allowed_ips', '');
         if (!empty($allowedIps)) {
             $clientIp = $this->getClientIp();
@@ -62,26 +51,16 @@ class AuthMiddleware
         ]);
     }
 
-    /**
-     * دریافت IP کلاینت (با پشتیبانی از پروکسی)
-     */
     private function getClientIp(): string
     {
         $ip = $_SERVER['REMOTE_ADDR'] ?? '0.0.0.0';
-        
-        // اگر پروکسی وجود دارد، از HTTP_X_FORWARDED_FOR استفاده کنیم
         if (isset($_SERVER['HTTP_X_FORWARDED_FOR'])) {
             $ips = explode(',', $_SERVER['HTTP_X_FORWARDED_FOR']);
             $ip = trim($ips[0]);
         }
-        
         return $ip;
     }
 
-    /**
-     * بررسی اینکه آیا IP در لیست مجاز قرار دارد؟
-     * پشتیبانی از IPv4 و IPv6 با CIDR
-     */
     private function isIpAllowed(string $clientIp, string $allowedList): bool
     {
         $allowedList = trim($allowedList);
@@ -91,11 +70,9 @@ class AuthMiddleware
 
         $allowedIps = array_map('trim', explode(',', $allowedList));
         foreach ($allowedIps as $allowed) {
-            // بررسی دقیق
             if ($clientIp === $allowed) {
                 return true;
             }
-            // بررسی CIDR
             if (strpos($allowed, '/') !== false) {
                 if ($this->ipInCidr($clientIp, $allowed)) {
                     return true;
@@ -105,16 +82,11 @@ class AuthMiddleware
         return false;
     }
 
-    /**
-     * بررسی اینکه آیا IP در محدوده CIDR قرار دارد؟
-     * پشتیبانی از IPv4 و IPv6
-     */
     private function ipInCidr(string $ip, string $cidr): bool
     {
         list($subnet, $mask) = explode('/', $cidr);
         $mask = (int)$mask;
 
-        // IPv4
         if (filter_var($ip, FILTER_VALIDATE_IP, FILTER_FLAG_IPV4) !== false) {
             $ipBin = ip2long($ip);
             $subnetBin = ip2long($subnet);
@@ -125,7 +97,6 @@ class AuthMiddleware
             return ($ipBin & $maskBin) === ($subnetBin & $maskBin);
         }
 
-        // IPv6
         if (filter_var($ip, FILTER_VALIDATE_IP, FILTER_FLAG_IPV6) !== false) {
             $ipBin = inet_pton($ip);
             $subnetBin = inet_pton($subnet);

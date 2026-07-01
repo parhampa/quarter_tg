@@ -11,8 +11,7 @@ declare(strict_types=1);
  * php scripts/set_webhook.php --url=https://example.com/webhook
  * php scripts/set_webhook.php --delete (برای حذف Webhook)
  * php scripts/set_webhook.php --info (برای مشاهده اطلاعات Webhook فعلی)
- * 
- * قبل از اجرا، فایل .env را تنظیم کنید و BOT_TOKEN را وارد کنید.
+ * php scripts/set_webhook.php --help (نمایش راهنما)
  */
 
 use QuarterTg\Core\Config;
@@ -21,25 +20,7 @@ use QuarterTg\Core\Config;
 require_once __DIR__ . '/../vendor/autoload.php';
 
 // بارگذاری متغیرهای محیطی
-if (file_exists(__DIR__ . '/../.env')) {
-    $lines = file(__DIR__ . '/../.env', FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES);
-    foreach ($lines as $line) {
-        $line = trim($line);
-        if (strpos($line, '#') === 0) {
-            continue;
-        }
-        $parts = explode('=', $line, 2);
-        if (count($parts) === 2) {
-            $name = trim($parts[0]);
-            $value = trim($parts[1]);
-            if (!empty($name)) {
-                putenv(sprintf('%s=%s', $name, $value));
-                $_ENV[$name] = $value;
-                $_SERVER[$name] = $value;
-            }
-        }
-    }
-}
+loadEnv();
 
 // بارگذاری کانفیگ
 $config = Config::createFromEnv();
@@ -54,28 +35,23 @@ if (empty($token)) {
 $options = getopt('', ['url:', 'delete', 'info', 'help']);
 $apiUrl = 'https://api.telegram.org/bot' . $token;
 
-// نمایش راهنما
 if (isset($options['help'])) {
     showHelp();
     exit(0);
 }
 
-// عملیات حذف Webhook
 if (isset($options['delete'])) {
     deleteWebhook($apiUrl);
     exit(0);
 }
 
-// مشاهده اطلاعات Webhook فعلی
 if (isset($options['info'])) {
     getWebhookInfo($apiUrl);
     exit(0);
 }
 
-// تنظیم Webhook
 $webhookUrl = $options['url'] ?? null;
 if (empty($webhookUrl)) {
-    // اگر URL داده نشده، از کانفیگ یا پیشفرض استفاده کنیم
     $webhookUrl = $config->get('webhook.url', '');
     if (empty($webhookUrl)) {
         echo "❌ خطا: آدرس Webhook مشخص نشده است.\n";
@@ -92,9 +68,6 @@ exit(0);
 // توابع کمکی
 // ============================================================
 
-/**
- * نمایش راهنما
- */
 function showHelp(): void
 {
     echo "🔧 **اسکریپت تنظیم Webhook ربات**\n";
@@ -115,47 +88,32 @@ function showHelp(): void
     echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n";
 }
 
-/**
- * تنظیم Webhook
- */
 function setWebhook(string $apiUrl, string $webhookUrl, Config $config): void
 {
     echo "🔄 در حال تنظیم Webhook...\n";
     echo "📌 آدرس: {$webhookUrl}\n";
 
-    // آماده‌سازی پارامترها
     $params = [
         'url' => $webhookUrl,
         'allowed_updates' => json_encode([
-            'message',
-            'callback_query',
-            'inline_query',
-            'chosen_inline_result',
-            'edited_message',
-            'channel_post',
-            'edited_channel_post',
-            'shipping_query',
-            'pre_checkout_query',
-            'poll',
-            'poll_answer',
-            'my_chat_member',
-            'chat_member',
-            'chat_join_request'
+            'message', 'callback_query', 'inline_query',
+            'chosen_inline_result', 'edited_message',
+            'channel_post', 'edited_channel_post',
+            'shipping_query', 'pre_checkout_query',
+            'poll', 'poll_answer', 'my_chat_member',
+            'chat_member', 'chat_join_request'
         ]),
         'max_connections' => 40,
         'drop_pending_updates' => true,
     ];
 
-    // تنظیم Secret Token (اختیاری)
     $secret = $config->get('webhook.secret', '');
     if (!empty($secret)) {
         $params['secret_token'] = $secret;
         echo "🔐 Webhook Secret تنظیم شد.\n";
     }
 
-    // ارسال درخواست به API تلگرام
     $response = sendRequest($apiUrl . '/setWebhook', $params);
-
     if ($response === false) {
         echo "❌ خطا در تنظیم Webhook.\n";
         exit(1);
@@ -164,23 +122,17 @@ function setWebhook(string $apiUrl, string $webhookUrl, Config $config): void
     if (isset($response['ok']) && $response['ok'] === true) {
         echo "✅ Webhook با موفقیت تنظیم شد!\n";
         echo "📌 آدرس: {$webhookUrl}\n";
-        if (isset($response['result'])) {
-            echo "📊 وضعیت: " . ($response['result'] ? 'فعال' : 'غیرفعال') . "\n";
-        }
+        echo "📊 وضعیت: " . ($response['result'] ? 'فعال' : 'غیرفعال') . "\n";
     } else {
         $error = $response['description'] ?? 'خطای ناشناخته';
-        echo "❌ خطا در تنظیم Webhook: {$error}\n";
+        echo "❌ خطا: {$error}\n";
         exit(1);
     }
 
-    // نمایش اطلاعات Webhook
     echo "\n";
     getWebhookInfo($apiUrl);
 }
 
-/**
- * دریافت اطلاعات Webhook
- */
 function getWebhookInfo(string $apiUrl): void
 {
     echo "📊 دریافت اطلاعات Webhook...\n";
@@ -199,11 +151,8 @@ function getWebhookInfo(string $apiUrl): void
         echo "📌 آدرس: " . ($info['url'] ?? 'تنظیم نشده') . "\n";
         echo "🔐 Secret Token: " . ($info['secret_token'] ?? 'تنظیم نشده') . "\n";
         echo "📊 وضعیت: " . (!empty($info['url']) ? 'فعال ✅' : 'غیرفعال ❌') . "\n";
-        echo "📈 تعداد اتصالات: " . ($info['max_connections'] ?? 'N/A') . "\n";
-        echo "⏳ تعداد درخواست‌های معوق: " . ($info['pending_update_count'] ?? 0) . "\n";
+        echo "⏳ درخواست‌های معوق: " . ($info['pending_update_count'] ?? 0) . "\n";
         echo "📦 آخرین خطا: " . ($info['last_error_message'] ?? 'ندارد') . "\n";
-        echo "🕐 زمان آخرین خطا: " . ($info['last_error_date'] ? date('Y-m-d H:i:s', $info['last_error_date']) : 'ندارد') . "\n";
-        echo "📋 آپدیت‌های مجاز: " . (isset($info['allowed_updates']) ? implode(', ', $info['allowed_updates']) : 'همه') . "\n";
         echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n";
     } else {
         $error = $response['description'] ?? 'خطای ناشناخته';
@@ -211,9 +160,6 @@ function getWebhookInfo(string $apiUrl): void
     }
 }
 
-/**
- * حذف Webhook
- */
 function deleteWebhook(string $apiUrl): void
 {
     echo "🔄 در حال حذف Webhook...\n";
@@ -226,17 +172,13 @@ function deleteWebhook(string $apiUrl): void
 
     if (isset($response['ok']) && $response['ok'] === true) {
         echo "✅ Webhook با موفقیت حذف شد!\n";
-        echo "💡 ربات اکنون در حالت Long Polling است (در صورت پشتیبانی).\n";
     } else {
         $error = $response['description'] ?? 'خطای ناشناخته';
-        echo "❌ خطا در حذف Webhook: {$error}\n";
+        echo "❌ خطا: {$error}\n";
         exit(1);
     }
 }
 
-/**
- * ارسال درخواست به API تلگرام
- */
 function sendRequest(string $url, array $params = []): array|false
 {
     $ch = curl_init();
@@ -248,7 +190,6 @@ function sendRequest(string $url, array $params = []): array|false
     curl_setopt($ch, CURLOPT_SSL_VERIFYHOST, 2);
     curl_setopt($ch, CURLOPT_TIMEOUT, 30);
     curl_setopt($ch, CURLOPT_USERAGENT, 'QuarterTG Webhook Setter/1.0');
-    curl_setopt($ch, CURLOPT_HEADER, false);
 
     $response = curl_exec($ch);
     $error = curl_error($ch);
@@ -272,4 +213,29 @@ function sendRequest(string $url, array $params = []): array|false
     }
 
     return $decoded;
+}
+
+function loadEnv(): void
+{
+    if (!file_exists(__DIR__ . '/../.env')) {
+        return;
+    }
+
+    $lines = file(__DIR__ . '/../.env', FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES);
+    foreach ($lines as $line) {
+        $line = trim($line);
+        if (strpos($line, '#') === 0) {
+            continue;
+        }
+        $parts = explode('=', $line, 2);
+        if (count($parts) === 2) {
+            $name = trim($parts[0]);
+            $value = trim($parts[1]);
+            if (!empty($name)) {
+                putenv(sprintf('%s=%s', $name, $value));
+                $_ENV[$name] = $value;
+                $_SERVER[$name] = $value;
+            }
+        }
+    }
 }

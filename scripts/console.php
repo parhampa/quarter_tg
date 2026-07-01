@@ -21,16 +21,11 @@ declare(strict_types=1);
  *   user:list         نمایش لیست کاربران
  *   group:list        نمایش لیست گروه‌ها
  *   help              نمایش راهنما
- * 
- * مثال:
- * php scripts/console.php cache:clear
- * php scripts/console.php webhook:set --url=https://example.com/webhook.php
  */
 
 use QuarterTg\Core\Application;
 use QuarterTg\Core\Config;
 use QuarterTg\Helpers\FormatHelper;
-use QuarterTg\Helpers\ValidationHelper;
 
 // بارگذاری اتولودر
 require_once __DIR__ . '/../vendor/autoload.php';
@@ -42,7 +37,6 @@ loadEnv();
 $command = $argv[1] ?? 'help';
 $options = parseOptions(array_slice($argv, 2));
 
-// اجرای دستور
 try {
     $app = new Application();
     $console = new Console($app);
@@ -133,7 +127,7 @@ class Console
     private function clearCache(): void
     {
         echo "🔄 در حال پاک کردن کش...\n";
-        $cache = $this->app->get(Cache::class);
+        $cache = $this->app->get(\QuarterTg\Core\Cache::class);
         $cache->clear();
         echo "✅ کش با موفقیت پاک شد.\n";
     }
@@ -141,13 +135,11 @@ class Console
     private function showCacheStats(): void
     {
         echo "📊 آمار کش:\n";
-        $cache = $this->app->get(Cache::class);
+        $cache = $this->app->get(\QuarterTg\Core\Cache::class);
         $stats = $cache->getStats();
         echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n";
         echo "📁 تعداد فایل‌ها: " . FormatHelper::numberFormat($stats['file_count']) . "\n";
         echo "💾 حجم کش: " . FormatHelper::formatSize($stats['total_size']) . "\n";
-        echo "📂 مسیر: " . $stats['cache_dir'] . "\n";
-        echo "⏱️  TTL پیش‌فرض: " . FormatHelper::formatDuration($stats['default_ttl']) . "\n";
         echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n";
     }
 
@@ -164,9 +156,8 @@ class Console
             echo "⚠️  حالت Fresh: جداول حذف و بازسازی خواهند شد.\n";
         }
 
-        $db = $this->app->get(Database::class);
+        $db = $this->app->get(\QuarterTg\Core\Database::class);
         
-        // خواندن فایل SQL
         $sqlFile = __DIR__ . '/../database/migrations/initial_schema.sql';
         if (!file_exists($sqlFile)) {
             echo "❌ فایل مهاجرت یافت نشد: {$sqlFile}\n";
@@ -180,7 +171,6 @@ class Console
         }
 
         try {
-            // اجرای کوئری‌ها
             $db->execute($sql);
             echo "✅ مهاجرت‌ها با موفقیت اجرا شدند.\n";
         } catch (Throwable $e) {
@@ -193,9 +183,8 @@ class Console
     {
         echo "🔄 در حال درج داده‌های اولیه...\n";
 
-        $db = $this->app->get(Database::class);
+        $db = $this->app->get(\QuarterTg\Core\Database::class);
         
-        // خواندن فایل سیدر
         $sqlFile = __DIR__ . '/../database/seeders/initial_data.sql';
         if (!file_exists($sqlFile)) {
             echo "❌ فایل سیدر یافت نشد: {$sqlFile}\n";
@@ -246,7 +235,6 @@ class Console
             'drop_pending_updates' => true,
         ];
 
-        // Secret Token
         $secret = $this->config->get('webhook.secret', '');
         if (!empty($secret)) {
             $params['secret_token'] = $secret;
@@ -321,9 +309,6 @@ class Console
             echo "📌 آدرس: " . ($info['url'] ?? 'تنظیم نشده') . "\n";
             echo "🔐 Secret Token: " . ($info['secret_token'] ?? 'تنظیم نشده') . "\n";
             echo "📊 وضعیت: " . (!empty($info['url']) ? 'فعال ✅' : 'غیرفعال ❌') . "\n";
-            echo "📈 تعداد اتصالات: " . ($info['max_connections'] ?? 'N/A') . "\n";
-            echo "⏳ درخواست‌های معوق: " . ($info['pending_update_count'] ?? 0) . "\n";
-            echo "📦 آخرین خطا: " . ($info['last_error_message'] ?? 'ندارد') . "\n";
             echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n";
         } else {
             $error = $response['description'] ?? 'خطای ناشناخته';
@@ -340,10 +325,8 @@ class Console
         echo "📊 آمار کلی ربات\n";
         echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n";
 
-        $db = $this->app->get(Database::class);
-        $cache = $this->app->get(Cache::class);
+        $db = $this->app->get(\QuarterTg\Core\Database::class);
 
-        // آمار کاربران
         $totalUsers = $db->queryValue('SELECT COUNT(*) FROM users') ?: 0;
         $totalGroups = $db->queryValue('SELECT COUNT(*) FROM groups') ?: 0;
         $totalAdmins = $db->queryValue('SELECT COUNT(*) FROM admins WHERE is_active = 1') ?: 0;
@@ -355,18 +338,6 @@ class Console
         echo "🔑 ادمین‌ها: " . FormatHelper::numberFormat($totalAdmins) . "\n";
         echo "⚠️  اخطارهای فعال: " . FormatHelper::numberFormat($totalWarns) . "\n";
         echo "🔒 قفل‌های فعال: " . FormatHelper::numberFormat($totalLocks) . "\n";
-
-        // اطلاعات کش
-        $cacheStats = $cache->getStats();
-        echo "💾 فایل‌های کش: " . FormatHelper::numberFormat($cacheStats['file_count']) . "\n";
-        echo "💾 حجم کش: " . FormatHelper::formatSize($cacheStats['total_size']) . "\n";
-
-        // اطلاعات سیستم
-        $memoryUsage = memory_get_usage(true);
-        $peakMemory = memory_get_peak_usage(true);
-        echo "💻 حافظه مصرفی: " . FormatHelper::formatSize($memoryUsage) . "\n";
-        echo "📈 حداکثر حافظه: " . FormatHelper::formatSize($peakMemory) . "\n";
-        echo "🐘 PHP: " . PHP_VERSION . "\n";
         echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n";
     }
 
@@ -382,7 +353,7 @@ class Console
         echo "👤 لیست کاربران (محدودیت: {$limit})\n";
         echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n";
 
-        $db = $this->app->get(Database::class);
+        $db = $this->app->get(\QuarterTg\Core\Database::class);
         $users = $db->query(
             'SELECT user_id, first_name, last_name, username, created_at 
              FROM users 
@@ -415,7 +386,7 @@ class Console
         echo "👥 لیست گروه‌ها (محدودیت: {$limit})\n";
         echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n";
 
-        $db = $this->app->get(Database::class);
+        $db = $this->app->get(\QuarterTg\Core\Database::class);
         $groups = $db->query(
             'SELECT group_id, title, username, type, created_at 
              FROM groups 
