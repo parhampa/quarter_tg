@@ -1,360 +1,507 @@
-# 🤖 Quarter TG — Telegram Group Management Bot
+# 🤖 QuarterTG - Telegram Group Management Bot
 
-[![PHP Version](https://img.shields.io/badge/PHP-7.4+-blue.svg)](https://php.net)
-[![MySQL](https://img.shields.io/badge/MySQL-5.7+-orange.svg)](https://mysql.com)
+A modular, high-performance Telegram bot for advanced group management with powerful features including content locking, admin management, ban/mute/warn systems, and comprehensive security.
+
+[![PHP Version](https://img.shields.io/badge/PHP-7.4%2B-blue.svg)](https://php.net)
 [![License](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
-[![Telegram](https://img.shields.io/badge/Telegram-Bot-0088cc.svg)](https://core.telegram.org/bots)
-[![Code style](https://img.shields.io/badge/code%20style-PSR--12-9cf.svg)](https://www.php-fig.org/psr/psr-12/)
-[![Tests](https://img.shields.io/badge/tests-PHPUnit-6b3e7e.svg)](https://phpunit.de)
-
-> **A production‑ready Telegram group management bot with advanced content locks, including full support for hashtag locking, bilingual interface, and modular architecture.**
+[![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](CONTRIBUTING.md)
+[![Code Style](https://img.shields.io/badge/Code%20Style-PSR--12-blue.svg)](https://www.php-fig.org/psr/psr-12/)
+[![PHPStan](https://img.shields.io/badge/PHPStan-level%205-blueviolet.svg)](https://phpstan.org/)
 
 ---
 
-## 📖 Table of Contents
+## 📋 Table of Contents
 
-- [✨ Features](#-features)
-- [📸 Screenshots](#-screenshots)
-- [🏗️ Architecture](#️-architecture)
-- [📦 Requirements](#-requirements)
-- [🚀 Installation](#-installation)
-- [⚙️ Configuration](#️-configuration)
-- [🔒 Security](#-security)
-- [📚 Command Reference](#-command-reference)
-  - [Admin Management](#admin-management)
-  - [User Management](#user-management)
-  - [Message Management](#message-management)
-  - [Content Locks](#content-locks)
-  - [Other Commands](#other-commands)
-- [🗄️ Database Schema](#️-database-schema)
-- [🧪 Testing](#-testing)
-- [🤝 Contributing](#-contributing)
-- [📄 License](#-license)
-- [🙏 Acknowledgements](#-acknowledgements)
+- [Features](#-features)
+- [Requirements](#-requirements)
+- [Installation](#-installation)
+- [Configuration](#-configuration)
+- [Database Setup](#-database-setup)
+- [Webhook Setup](#-webhook-setup)
+- [Bot Commands](#-bot-commands)
+- [Project Structure](#-project-structure)
+- [Security](#-security)
+- [Testing](#-testing)
+- [Console Commands](#-console-commands)
+- [Contributing](#-contributing)
+- [License](#-license)
 
 ---
 
 ## ✨ Features
 
-### 🧑‍💼 Admin Management
-- Add / remove **primary admins**
-- Add / remove **sub‑admins**
-- List all admins with role levels (`owner`, `admin`, `subadmin`)
-- Promote / demote between admin and sub‑admin
+### Core Management
+- **Ban/Unban** – Permanent or temporary bans with duration support (e.g., `1h`, `1d`)
+- **Mute/Unmute** – Restrict users from sending messages, media, and polls
+- **Kick** – Remove users from the group instantly
+- **Warn System** – Issue warnings with auto-ban after reaching a configurable threshold (default: 3)
+- **Clear Messages** – Bulk delete up to 100 messages with rate limiting protection
 
-### 👥 User Management
-- **Ban** users with optional reason (auto‑revoke messages)
-- **Unban** users
-- List all banned users with date, reason, and who banned
-- **Mute** users – permanent or timed (seconds, minutes, hours, days)
-- **Unmute** users
-- **Warn** users – auto‑ban after 3 warnings
-- Remove all warnings for a user
+### Admin Management
+- **Add/Remove Admins** – With role-based levels (`admin`, `super_admin`)
+- **Promote/Demote** – Change admin levels on the fly
+- **Admin List** – View all admins with their roles
 
-### 💬 Message Management
-- **Pin** messages (with silent mode)
-- **Unpin** specific or all pinned messages
-- **Delete** messages (via reply)
-- **Clear** up to 5 000 messages with 24‑hour cooldown
-- Get **ID** of any user or group
+### Content Locking
+- **10 Lock Types**: Links, Tags, Hashtags, Commands, Arabic text, English text, Persian text, Spam, Stickers, Videos, Audio, Documents, Voice, Photos, GIFs
+- **Lock/Unlock** – Individual or batch lock management
+- **View Active Locks** – See which locks are currently enabled
 
-### 🔐 Content Locks (10 types)
-| Lock Type        | English Command               | Persian Command           |
-|------------------|-------------------------------|---------------------------|
-| Text messages    | `/lockmsg` / `/dislockmsg`    | `قفل پیام` / `رفع قفل پیام` |
-| Photos           | `/lockpic` / `/dislockpic`    | `قفل عکس` / `رفع قفل عکس`   |
-| Videos           | `/lockfilm` / `/dislockfilm`  | `قفل فیلم` / `رفع قفل فیلم` |
-| GIFs             | `/lockgif` / `/dislockgif`    | `قفل گیف` / `رفع قفل گیف`   |
-| Stickers         | `/locksticker` / `/dislocksticker` | `قفل استیکر` / `رفع قفل استیکر` |
-| Voice messages   | `/lockvoice` / `/remlockvoice`| `قفل ویس` / `رفع قفل ویس`   |
-| Video notes      | `/lockvm` / `/remlockvm`      | `قفل ویدئو مسیج` / `رفع قفل ویدئو مسیج` |
-| Links            | `/locklink` / `/remlocklink`  | `قفل لینک` / `رفع قفل لینک` |
-| Tags (mentions)  | `/locktag` / `/remlocktag`    | `قفل تگ` / `رفع قفل تگ`     |
-| **Hashtags** ⭐   | `/lockhashtag` / `/remlockhashtag` | `قفل هشتگ` / `رفع قفل هشتگ` |
+### User & Group Info
+- **User Info** – View user details with `/info` or `/whoami`
+- **Group Info** – View group statistics with `/group`
+- **Warn List** – View warnings for any user
 
-### 🌐 Bilingual Interface
-- Commands work in both **Persian** and **English**
-- Responses are automatically shown in the same language as the command
-- Easy to extend with new translations
+### Security & Performance
+- **Webhook Secret Token** – Validate incoming requests
+- **IP Whitelisting** – Restrict access to official Telegram IPs
+- **Prepared Statements** – Prevent SQL injection attacks
+- **RBAC (Role-Based Access Control)** – Four levels: `owner`, `super_admin`, `admin`, `moderator`, `member`
+- **Self-Protection** – Bot cannot be banned, muted, or warned
+- **File-based Caching** – With TTL support and garbage collection
+- **Log Rotation** – Automatic rotation with configurable file size
 
-### 🔐 Security & Performance
-- Webhook **secret token** validation
-- Prepared statements (PDO) to prevent SQL injection
-- Role‑based access control (RBAC)
-- **24‑hour cooldown** on `/clear` to prevent abuse
-- Self‑protection: bot cannot be banned, muted, or warned by anyone
-- File‑based **caching** with configurable TTL (default 5 min)
-- Comprehensive **logging** with rotation (5 backup files)
-- Optional IP whitelisting for webhook endpoints
-
----
-
-## 🏗️ Architecture
-
-```
-quarter_tg/
-├── config/
-│   └── config.php                  # Main settings (bot token, DB, cache, logs)
-├── src/
-│   ├── Core/                       # Core engine
-│   │   ├── Bot.php                 # Main orchestrator
-│   │   ├── ModuleManager.php       # Dynamic module loader with DI
-│   │   ├── LockManager.php         # Content lock logic
-│   │   ├── MuteManager.php         # Mute management (timed/permanent)
-│   │   ├── WarningManager.php      # Warning system with auto‑ban
-│   │   ├── AuthorizationManager.php# RBAC (owner/admin/subadmin/user)
-│   │   ├── AdminManager.php        # Admin CRUD operations
-│   │   ├── PermissionManager.php   # Advanced command permissions
-│   │   ├── WelcomeManager.php      # Welcome message handling
-│   │   ├── MessageLogger.php       # Message logging
-│   │   ├── CommandLogger.php       # Admin command logging
-│   │   ├── Database.php            # PDO database wrapper
-│   │   ├── Cache.php               # File‑based cache
-│   │   └── Logger.php              # Logging with rotation
-│   ├── Helpers/
-│   │   ├── TelegramApi.php         # Telegram Bot API wrapper (cURL)
-│   │   └── LanguageHelper.php      # i18n translation
-│   ├── Modules/                    # Command modules
-│   │   ├── BaseLockModule.php      # Base class for all lock modules
-│   │   ├── LockHashtagModule.php   # ⭐ Hashtag lock
-│   │   ├── RemLockHashtagModule.php# ⭐ Hashtag unlock
-│   │   ├── HelpModule.php          # Help system
-│   │   ├── AddAdminModule.php
-│   │   ├── RemoveAdminModule.php
-│   │   ├── ListAdminsModule.php
-│   │   ├── BanModule.php
-│   │   ├── UnbanModule.php
-│   │   ├── ListBansModule.php
-│   │   ├── MuteModule.php
-│   │   ├── UnmuteModule.php
-│   │   ├── WarningModule.php
-│   │   ├── RemoveWarningModule.php
-│   │   ├── PinModule.php
-│   │   ├── UnpinModule.php
-│   │   ├── DeleteModule.php
-│   │   ├── ClearModule.php
-│   │   ├── GetIdModule.php
-│   │   ├── WelcomeModule.php
-│   │   └── RemWelcomeModule.php
-│   └── Exceptions/                 # Custom exceptions
-├── tests/                          # PHPUnit test suite
-│   ├── bootstrap.php
-│   ├── TestCase.php
-│   └── Unit/ExampleTest.php
-├── logs/                           # Log files (must be writable)
-├── cache/                          # Cache files (must be writable)
-├── composer.json
-├── db.sql                          # Complete database schema
-├── index.php                       # Webhook entry point with security checks
-├── bootstrap.php                   # Dependency injection & bootstrapping
-├── .htaccess                       # Security rules
-├── .gitignore
-├── phpunit.xml
-└── README.md                       # This file
-```
+### Developer Experience
+- **Modular Architecture** – Easy to extend with new modules
+- **Dependency Injection** – Clean service management with Container
+- **Event System** – Event-driven architecture for extensibility
+- **Console Commands** – CLI management tool for cache, database, webhook, stats
+- **Unit Tests** – Comprehensive test suite with PHPUnit
+- **Code Quality** – PSR-12 compliance, PHPStan static analysis
 
 ---
 
 ## 📦 Requirements
 
-- **PHP** ≥ 7.4 (with `curl`, `json`, `mbstring`, `pdo`, `mysqli`)
-- **MySQL** ≥ 5.7 or **MariaDB** ≥ 10.2
+- **PHP** 7.4 or higher
+- **MySQL** 5.7 or higher
 - **Composer**
-- **Telegram Bot Token** from [@BotFather](https://t.me/BotFather)
-- **HTTPS** endpoint for webhook (required by Telegram)
+- **SSL Certificate** (required for Webhook)
+
+### Required PHP Extensions
+- `ext-pdo` – Database connection
+- `ext-json` – JSON processing
+- `ext-curl` – HTTP requests
+- `ext-mbstring` – Unicode string handling
 
 ---
 
 ## 🚀 Installation
 
-### 1. Clone the repository
+### 1. Clone the Repository
+
 ```bash
 git clone https://github.com/parhampa/quarter_tg.git
 cd quarter_tg
 ```
 
-### 2. Install dependencies
+### 2. Install Dependencies
+
 ```bash
 composer install
 ```
 
-### 3. Create and configure the database
+### 3. Configure Environment
+
+Copy the example environment file:
+
 ```bash
-mysql -u root -p < db.sql
+cp .env.example .env
 ```
 
-### 4. Configure the bot
-```bash
-cp config/config.example.php config/config.php   # If config.example exists
-```
-Then edit `config/config.php` and fill in:
-- `bot_token` – your token from @BotFather
-- `database` – host, name, user, password
-- `webhook.url` – your public HTTPS URL (e.g. `https://your-domain.com/index.php`)
-- `webhook.secret` – a random secret for webhook validation
-- `owner_id` – your Telegram numeric ID
-- `cache`, `logging` – enable/disable and paths
+Open `.env` and fill in your credentials:
 
-### 5. Set permissions
-```bash
-chmod -R 755 cache/ logs/
+```env
+BOT_TOKEN=your_bot_token_here
+DB_PASSWORD=your_strong_password
+OWNER_ID=your_telegram_id
+WEBHOOK_SECRET=your_webhook_secret
 ```
 
-### 6. Set webhook
+### 4. Create Database
+
+```sql
+CREATE DATABASE quarter_tg CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+```
+
+### 5. Run Database Migrations
+
 ```bash
-curl -F "url=https://your-domain.com/index.php" \
-     -F "secret_token=your-secret-key-here" \
-     https://api.telegram.org/botYOUR_BOT_TOKEN/setWebhook
+php scripts/console.php db:migrate
+```
+
+### 6. Run Database Seeders (optional)
+
+```bash
+php scripts/console.php db:seed
+```
+
+### 7. Set Webhook
+
+```bash
+php scripts/console.php webhook:set --url=https://your-domain.com/webhook.php
+```
+
+### 8. Set Directory Permissions
+
+```bash
+chmod -R 755 cache logs
 ```
 
 ---
 
-## ⚙️ Configuration Reference
+## ⚙️ Configuration
 
-| Key | Description |
-|-----|-------------|
-| `bot_token` | Telegram bot token from @BotFather |
-| `database` | MySQL connection settings |
-| `webhook.url` | Public URL of your `index.php` |
-| `webhook.secret` | Secret token for webhook security (optional but recommended) |
-| `cache.enabled` | Enable/disable caching |
-| `cache.ttl` | Cache TTL in seconds (default 300) |
-| `logging.enabled` | Enable/disable logging |
-| `logging.path` | Log file path |
-| `logging.level` | Minimum log level (`debug`, `info`, `warning`, `error`) |
-| `owner_id` | Telegram numeric ID of the super admin |
-| `default_language` | Default language (`fa` or `en`) |
-| `command_map` | Command-to-module mapping (both English & Persian) |
+### Main Configuration File
+Location: `config/config.php`
 
----
+All configuration keys are also available as environment variables in `.env` for security.
 
-## 🔒 Security
+### Key Configuration Options
 
-- **Webhook secret token** – only requests with the correct `X-Telegram-Bot-Api-Secret-Token` header are processed.
-- **Prepared statements** – all database queries use PDO prepared statements to prevent SQL injection.
-- **RBAC** – users are categorised as `owner`, `admin`, `subadmin`, or `user`. Admins cannot act on other admins.
-- **Rate limiting** – `/clear` has a 24‑hour cooldown per user per group.
-- **Self‑protection** – the bot cannot be banned, muted, or warned by anyone, including the owner.
-- **Optional IP whitelisting** – you can enable Telegram’s official IP ranges in `index.php`.
-
----
-
-## 📚 Command Reference
-
-### Admin Management
-| Command | Description | Persian |
-|---------|-------------|---------|
-| `/addadmin @username` | Add a new primary admin | `ست ادمین` |
-| `/remadmin @username` | Remove an admin | `حذف ادمین` |
-| `/listadmin` | List all admins with roles | `لیست ادمین‌ها` |
-
-### User Management
-| Command | Description | Persian |
-|---------|-------------|---------|
-| `/ban @username [reason]` | Ban a user | `بن` |
-| `/unban @username` | Unban a user | `آن‌بن` |
-| `/listbans` | List banned users | `لیست بن‌ها` |
-| `/mute @username [duration]` | Mute user (duration: 60, 5m, 2h, 1d) | `سکوت` |
-| `/unmute @username` | Unmute a user | `حذف سکوت` |
-| `/warning @username [reason]` | Give a warning (auto‑ban after 3) | `اخطار` |
-| `/remwarning @username` | Remove all warnings | `حذف اخطار` |
-
-### Message Management
-| Command | Description | Persian |
-|---------|-------------|---------|
-| `/pin` (reply) | Pin the replied message | `پین` |
-| `/rempin` (reply) | Unpin a specific message | `حذف پین` |
-| `/rempin` | Unpin all messages | — |
-| `/del` (reply) | Delete the replied message | `حذف` |
-| `/clear [count]` | Clear up to 5000 messages (24h cooldown) | `پاکسازی` |
-| `/id` | Get your ID | `آیدی` |
-| `/id @username` | Get a user's ID | — |
-| `/id` (reply) | Get ID of the replied user | — |
-
-### Content Locks
-| Command | Description | Persian |
-|---------|-------------|---------|
-| `/lockmsg` / `/dislockmsg` | Lock / unlock text messages | `قفل پیام` / `رفع قفل پیام` |
-| `/lockpic` / `/dislockpic` | Lock / unlock photos | `قفل عکس` / `رفع قفل عکس` |
-| `/lockfilm` / `/dislockfilm` | Lock / unlock videos | `قفل فیلم` / `رفع قفل فیلم` |
-| `/lockgif` / `/dislockgif` | Lock / unlock GIFs | `قفل گیف` / `رفع قفل گیف` |
-| `/locksticker` / `/dislocksticker` | Lock / unlock stickers | `قفل استیکر` / `رفع قفل استیکر` |
-| `/lockvoice` / `/remlockvoice` | Lock / unlock voice messages | `قفل ویس` / `رفع قفل ویس` |
-| `/lockvm` / `/remlockvm` | Lock / unlock video notes | `قفل ویدئو مسیج` / `رفع قفل ویدئو مسیج` |
-| `/locklink` / `/remlocklink` | Lock / unlock links | `قفل لینک` / `رفع قفل لینک` |
-| `/locktag` / `/remlocktag` | Lock / unlock mentions | `قفل تگ` / `رفع قفل تگ` |
-| **⭐ `/lockhashtag` / `/remlockhashtag`** | **Lock / unlock hashtags** | **`قفل هشتگ` / `رفع قفل هشتگ`** |
-
-### Other Commands
-| Command | Description | Persian |
-|---------|-------------|---------|
-| `/sayhello <message>` | Enable and set welcome message | `خوش آمد بگو` |
-| `/remsayhello` | Disable welcome message | `خوش آمد نگو` |
-| `/help` | Show help (bilingual) | `راهنما` |
+| Key | Description | Default |
+|-----|-------------|---------|
+| `bot_token` | Telegram bot token | (required) |
+| `database.host` | MySQL host | `localhost` |
+| `database.name` | Database name | `quarter_tg` |
+| `database.username` | Database user | `root` |
+| `database.password` | Database password | (required) |
+| `cache.path` | Cache directory | `./cache` |
+| `cache.ttl` | Cache TTL (seconds) | `3600` |
+| `log.path` | Log file path | `./logs/app.log` |
+| `log.level` | Log level | `info` |
+| `log.max_size` | Max log size (bytes) | `10485760` |
+| `owner_id` | Bot owner's Telegram ID | (required) |
+| `webhook.secret` | Webhook secret token | (optional) |
+| `webhook.allowed_ips` | Allowed IPs (CIDR) | `149.154.160.0/20,91.108.4.0/22` |
+| `warn.max_warns` | Max warnings before auto-ban | `3` |
+| `warn.expiry_time` | Warning expiry (seconds) | `86400` |
 
 ---
 
 ## 🗄️ Database Schema
 
-The project uses 11 tables (see `db.sql` for full schema):
+The database includes the following tables:
 
 | Table | Description |
 |-------|-------------|
-| `bot_admins` | Primary admins |
-| `bot_sub_admins` | Sub‑admins |
-| `bot_permissions` | Command‑level permissions |
-| `bot_group_locks` | Content lock status (includes `lock_hashtag`) |
-| `bot_bans` | Banned users |
-| `bot_mutes` | Muted users (with expiry) |
-| `bot_warnings` | User warnings (count auto‑increments) |
-| `bot_welcome_settings` | Welcome message config |
-| `bot_messages` | Message logs |
-| `bot_command_logs` | Admin command audit trail |
-| `bot_clear_cooldown` | 24‑hour cooldown for `/clear` |
+| `users` | User information (ID, name, username, etc.) |
+| `groups` | Group information (ID, title, type, etc.) |
+| `admins` | Admin records with levels (`admin`, `super_admin`) |
+| `moderators` | Moderator records (lower than admin) |
+| `group_members` | Group membership tracking |
+| `group_locks` | Active locks per group |
+| `warns` | Warning records with expiry dates |
+| `bans` | Ban history |
+| `group_settings` | Group settings (welcome message, rules, etc.) |
+| `migrations` | Migration version control |
+
+---
+
+## 🔗 Webhook Setup
+
+### Manual Webhook Setup
+```bash
+php scripts/console.php webhook:set --url=https://your-domain.com/webhook.php
+```
+
+### View Webhook Status
+```bash
+php scripts/console.php webhook:info
+```
+
+### Delete Webhook
+```bash
+php scripts/console.php webhook:delete
+```
+
+### Webhook Endpoint Requirements
+- **HTTPS Required** – Telegram only accepts HTTPS
+- **Valid SSL Certificate** – Self-signed certificates are not accepted
+- **Correct File Permissions** – Webhook file must be readable by web server
+
+---
+
+## 🤖 Bot Commands
+
+### Public Commands
+
+| Command | Description |
+|---------|-------------|
+| `/help` or `/start` | Show help and welcome message |
+| `/ping` | Check bot status and response time |
+| `/info [@username|ID]` | Show user information |
+| `/whoami` | Show your own information |
+| `/group` | Show group information |
+| `/locks` | Show active locks |
+
+### Admin Commands (requires `admin` level)
+
+| Command | Description |
+|---------|-------------|
+| `/ban [@username|ID] [duration] [reason]` | Ban user (e.g., `/ban @user 1h spam`) |
+| `/unban [@username|ID]` | Unban user |
+| `/kick [@username|ID] [reason]` | Kick user from group |
+| `/mute [@username|ID] [duration] [reason]` | Mute user temporarily |
+| `/unmute [@username|ID]` | Unmute user |
+| `/warn [@username|ID] [reason]` | Warn user |
+| `/unwarn [@username|ID]` | Remove one warning |
+| `/warns [@username|ID]` | Show user's warnings |
+| `/clear [count]` | Delete messages (max 100) |
+| `/lock [type]` | Enable a lock |
+| `/unlock [type]` | Disable a lock |
+| `/lockall` | Enable all locks |
+| `/unlockall` | Disable all locks |
+| `/settings` | Show group settings |
+| `/setwelcome [text]` | Set welcome message |
+| `/setrules [text]` | Set group rules |
+| `/removewelcome` | Remove welcome message |
+| `/removerules` | Remove group rules |
+| `/stats` | Show bot statistics |
+
+### Super Admin Commands (requires `super_admin` level)
+
+| Command | Description |
+|---------|-------------|
+| `/promote [@username|ID]` | Promote to `super_admin` |
+| `/demote [@username|ID]` | Demote to `admin` |
+
+### Owner Commands (requires `owner` level)
+
+| Command | Description |
+|---------|-------------|
+| `/setadmin [@username|ID] [level]` | Add admin (level: admin, super_admin) |
+| `/removeadmin [@username|ID]` | Remove admin |
+
+---
+
+## 📂 Project Structure
+
+```
+quarter_tg/
+├── src/
+│   ├── Core/                 # Core framework
+│   │   ├── Application.php   # Application entry point
+│   │   ├── Bot.php          # Main bot logic
+│   │   ├── Container.php    # Dependency injection container
+│   │   ├── Config.php       # Configuration manager
+│   │   ├── Database.php     # PDO database wrapper
+│   │   ├── Cache.php        # File-based cache
+│   │   ├── Logger.php       # Logging system with rotation
+│   │   ├── TelegramApi.php  # Telegram API client
+│   │   ├── ModuleManager.php # Module loader
+│   │   ├── EventDispatcher.php # Event system
+│   │   └── Middleware/      # HTTP middleware
+│   │       ├── AuthMiddleware.php
+│   │       └── LoggingMiddleware.php
+│   ├── Managers/            # Data managers
+│   │   ├── UserManager.php
+│   │   ├── AdminManager.php
+│   │   ├── LockManager.php
+│   │   ├── WarnManager.php
+│   │   └── AuthorizationManager.php
+│   ├── Modules/             # Bot command modules
+│   │   ├── BanModule.php
+│   │   ├── UnbanModule.php
+│   │   ├── KickModule.php
+│   │   ├── MuteModule.php
+│   │   ├── UnmuteModule.php
+│   │   ├── WarnModule.php
+│   │   ├── LockModule.php
+│   │   ├── HelpModule.php
+│   │   ├── InfoModule.php
+│   │   ├── StatsModule.php
+│   │   ├── SettingsModule.php
+│   │   ├── ClearModule.php
+│   │   └── ...
+│   ├── Helpers/             # Utility helpers
+│   │   ├── FormatHelper.php
+│   │   ├── ValidationHelper.php
+│   │   └── MessageHelper.php
+│   └── Exceptions/          # Custom exceptions
+│       ├── BaseException.php
+│       ├── ApiException.php
+│       ├── DatabaseException.php
+│       └── ...
+├── config/
+│   ├── config.php          # Main configuration
+│   └── config.example.php  # Example configuration
+├── database/
+│   ├── migrations/         # Database migrations
+│   │   └── initial_schema.sql
+│   └── seeders/            # Seed data
+│       └── initial_data.sql
+├── scripts/                # CLI scripts
+│   ├── console.php        # Management console
+│   └── set_webhook.php    # Webhook setup script
+├── tests/                  # Unit tests
+│   ├── bootstrap.php
+│   ├── TestCase.php
+│   └── Unit/
+│       ├── ConfigTest.php
+│       ├── LoggerTest.php
+│       ├── DatabaseTest.php
+│       └── Helpers/
+│           ├── FormatHelperTest.php
+│           └── ValidationHelperTest.php
+├── cache/                  # Cache directory (auto-created)
+├── logs/                   # Log directory (auto-created)
+├── webhook.php             # Webhook entry point
+├── bootstrap.php           # Bootstrapping
+├── .env.example            # Environment variables example
+├── composer.json           # Dependencies
+├── phpunit.xml            # PHPUnit configuration
+├── .htaccess              # Apache security rules
+├── .gitignore             # Git ignore rules
+└── README.md              # Documentation
+```
+
+---
+
+## 🔒 Security
+
+| Feature | Description |
+|---------|-------------|
+| **Webhook Secret** | Validates incoming requests with a secret token |
+| **IP Whitelist** | Restricts access to official Telegram IPs |
+| **Prepared Statements** | Prevents SQL injection attacks |
+| **Input Validation** | All user inputs are validated |
+| **RBAC** | Role-based access control for all commands |
+| **Self-Protection** | Bot cannot be banned, muted, or warned |
+| **Rate Limiting** | 24-hour cooldown on `/clear` command |
+| **HTTPS Only** | Webhook accepts only HTTPS connections |
+| **Logging** | All sensitive operations are logged |
+
+### Recommended IP Whitelist
+
+Add these official Telegram IP ranges to your `.env`:
+
+```env
+ALLOWED_IPS=149.154.160.0/20,91.108.4.0/22,93.190.128.0/18
+```
 
 ---
 
 ## 🧪 Testing
 
-The project includes a full PHPUnit test suite.
+### Run All Tests
 
-### Run all tests
 ```bash
 vendor/bin/phpunit
 ```
 
-### Run specific test suite
+### Run Specific Test File
+
 ```bash
-vendor/bin/phpunit tests/Unit/
+vendor/bin/phpunit tests/Unit/ConfigTest.php
 ```
 
-### Generate coverage report
+### Run Tests with Code Coverage
+
 ```bash
 vendor/bin/phpunit --coverage-html coverage/
 ```
 
-### Test configuration
-- Uses a separate test database (`quarter_tg_test`)
-- Cache and logging are disabled during tests
-- All data is automatically cleaned up after each test
+### Test Suite Coverage
+
+| Component | Tests | Description |
+|-----------|-------|-------------|
+| Config | 24 | Configuration management, dot notation, environment variables |
+| Logger | 15 | Logging levels, rotation, handlers, error handling |
+| Database | 30 | Queries, transactions, prepared statements |
+| FormatHelper | 29 | Persian digits, date formatting, Markdown |
+| ValidationHelper | 34 | Input validation, sanitization |
+
+---
+
+## 🛠️ Console Commands
+
+### Cache Management
+
+```bash
+# Clear cache
+php scripts/console.php cache:clear
+
+# Show cache statistics
+php scripts/console.php cache:stats
+```
+
+### Database Management
+
+```bash
+# Run migrations
+php scripts/console.php db:migrate
+
+# Run migrations with fresh reset
+php scripts/console.php db:migrate --fresh
+
+# Seed database with initial data
+php scripts/console.php db:seed
+```
+
+### Webhook Management
+
+```bash
+# Set webhook
+php scripts/console.php webhook:set --url=https://example.com/webhook.php
+
+# Delete webhook
+php scripts/console.php webhook:delete
+
+# Show webhook info
+php scripts/console.php webhook:info
+```
+
+### Statistics
+
+```bash
+# Show bot statistics
+php scripts/console.php stats:show
+```
+
+### User & Group Lists
+
+```bash
+# List users (limit 20)
+php scripts/console.php user:list
+
+# List users with custom limit
+php scripts/console.php user:list --limit=50
+
+# List groups
+php scripts/console.php group:list --limit=20
+```
 
 ---
 
 ## 🤝 Contributing
 
-Contributions are welcome! Please follow these steps:
+We welcome contributions! Please follow these steps:
 
 1. Fork the repository
 2. Create a feature branch (`git checkout -b feature/amazing-feature`)
-3. Commit your changes (`git commit -m 'Add some amazing feature'`)
-4. Push to the branch (`git push origin feature/amazing-feature`)
-5. Open a Pull Request
+3. Make your changes
+4. Run tests (`composer test`)
+5. Fix code style (`composer cs-fix`)
+6. Run static analysis (`composer phpstan`)
+7. Commit and push
+8. Open a Pull Request
 
-### Coding Standards
-- Follow **PSR‑12** coding style
-- Write **PHPDoc** comments for all public methods
-- Add **unit tests** for new features
-- Update **README.md** if adding new commands
+### Development Commands
+
+```bash
+# Run tests
+composer test
+
+# Fix code style
+composer cs-fix
+
+# Run PHPStan
+composer phpstan
+
+# Run all quality checks
+composer qa
+```
 
 ---
 
@@ -364,23 +511,22 @@ This project is licensed under the **MIT License** – see the [LICENSE](LICENSE
 
 ---
 
-## 🙏 Acknowledgements
+## 🙏 Credits
 
-- [Telegram Bot API](https://core.telegram.org/bots/api) – for the amazing platform
-- [PHP](https://php.net) – the language that powers it all
-- [Composer](https://getcomposer.org) – dependency management
-- [PHPUnit](https://phpunit.de) – testing framework
-
----
-
-## 📬 Contact
-
-- **Author**: Parham Pourmohammad
-- **GitHub**: [parhampa](https://github.com/parhampa)
-- **Project URL**: [https://github.com/parhampa/quarter_tg](https://github.com/parhampa/quarter_tg)
+- [Telegram Bot API](https://core.telegram.org/bots/api)
+- [PHP](https://php.net)
+- [Composer](https://getcomposer.org)
+- All contributors and supporters
 
 ---
 
-<div align="center">
-  <sub>Built with ❤️ for the Telegram community</sub>
-</div>
+## ⭐ Support
+
+If this project helped you, please give it a **Star** ⭐ on GitHub!
+
+- **Issues**: [GitHub Issues](https://github.com/parhampa/quarter_tg/issues)
+- **Discussions**: [GitHub Discussions](https://github.com/parhampa/quarter_tg/discussions)
+
+---
+
+**Made with ❤️ for the Telegram community**
