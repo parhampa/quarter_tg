@@ -1,0 +1,78 @@
+{
+    "name": "parhampa/quarter_tg",
+    "description": "A modular Telegram group management bot with advanced features",
+    "type": "project",
+    "keywords": ["telegram", "bot", "group", "management", "modular"],
+    "license": "MIT",
+    "homepage": "https://github.com/parhampa/quarter_tg",
+    "support": {
+        "issues": "https://github.com/parhampa/quarter_tg/issues",
+        "source": "https://github.com/parhampa/quarter_tg"
+    },
+    "authors": [
+        {
+            "name": "Parham Pourdavood",
+            "email": "parhampa@gmail.com",
+            "role": "Developer"
+        }
+    ],
+    "require": {
+        "php": ">=7.4.0",
+        "ext-pdo": "*",
+        "ext-json": "*",
+        "ext-curl": "*",
+        "ext-mbstring": "*"
+    },
+    "require-dev": {
+        "phpunit/phpunit": "^9.5",
+        "squizlabs/php_codesniffer": "^3.6",
+        "phpstan/phpstan": "^1.8",
+        "phpunit/php-code-coverage": "^9.2",
+        "roave/security-advisories": "dev-latest"
+    },
+    "autoload": {
+        "psr-4": {
+            "QuarterTg\\": "src/"
+        }
+    },
+    "autoload-dev": {
+        "psr-4": {
+            "Tests\\": "tests/"
+        }
+    },
+    "scripts": {
+        "test": "phpunit --colors=always",
+        "test-coverage": "phpunit --coverage-html coverage/",
+        "cs-check": "phpcs --standard=PSR12 src/",
+        "cs-fix": "phpcbf --standard=PSR12 src/",
+        "phpstan": "phpstan analyse src/ --level=5",
+        "qa": [
+            "@cs-check",
+            "@phpstan",
+            "@test"
+        ],
+        "post-install-cmd": [
+            "@setup-cache",
+            "@setup-logs"
+        ],
+        "setup-cache": "mkdir -p cache && chmod 755 cache",
+        "setup-logs": "mkdir -p logs && chmod 755 logs",
+        "setup-env": "cp .env.example .env && echo '.env file created. Please update your credentials.'"
+    },
+    "config": {
+        "sort-packages": true,
+        "optimize-autoloader": true,
+        "allow-plugins": {
+            "composer/installers": true,
+            "dealerdirect/phpcodesniffer-composer-installer": true
+        }
+    },
+    "minimum-stability": "stable",
+    "prefer-stable": true,
+    "repositories": [
+        {
+            "type": "composer",
+            "url": "https://packagist.org"
+        }
+    ]
+}
